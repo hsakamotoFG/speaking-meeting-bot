@@ -1,10 +1,11 @@
-import requests
-import os
-import sys
-import uuid
-import time
-import signal
 import argparse
+import os
+import signal
+import sys
+import time
+import uuid
+
+import requests
 from dotenv import load_dotenv
 from loguru import logger
 
@@ -17,6 +18,7 @@ API_KEY = os.getenv("MEETING_BAAS_API_KEY")
 if not API_KEY:
   logger.error("MEETING_BAAS_API_KEY not found in environment variables")
   exit(1)
+
 
 def validate_url(url):
   """Validates the URL format, ensuring it starts with https://"""
@@ -37,7 +39,11 @@ def get_user_input(prompt, validator=None):
       return user_input
 
 
-def create_bot(meeting_url, ngrok_wss, bot_name, bot_image):
+def create_baas_bot(meeting_url, ngrok_wss, persona_name=None):
+  from config.personas import get_persona
+
+  persona = get_persona(persona_name)
+
   url = "https://api.meetingbaas.com/bots"
   headers = {
     "Content-Type": "application/json",
@@ -47,18 +53,18 @@ def create_bot(meeting_url, ngrok_wss, bot_name, bot_image):
   deduplication_key = str(uuid.uuid4())
   config = {
     "meeting_url": meeting_url,
-    "bot_name": bot_name,
+    "bot_name": persona["name"],
     "recording_mode": "speaker_view",
-    "bot_image": bot_image,
-    "entry_message": "I'm ready, you can talk to start chatting!",
-    "reserved": False,
+    "bot_image": persona["image"],
+    "entry_message": persona["entry_message"],
+    "reserved": True,
     "speech_to_text": {"provider": "Default"},
     "automatic_leave": {"waiting_room_timeout": 600},
     "deduplication_key": deduplication_key,
     "streaming": {"input": ngrok_wss, "output": ngrok_wss},
   }
 
-  logger.info(f"Creating bot with name: {bot_name}")
+  logger.info(f"Creating bot with persona: {persona['name']}")
   logger.debug(f"Bot configuration: {config}")
 
   response = requests.post(url, json=config, headers=headers)
@@ -127,16 +133,16 @@ class BotManager:
     )
 
   def create_and_manage_bot(self):
-    self.current_bot_id = create_bot(
-      self.args.meeting_url,
-      self.args.ngrok_wss,
-      self.args.bot_name,
-      self.args.bot_image,
+    self.current_bot_id = create_baas_bot(
+      self.args.meeting_url, self.args.ngrok_wss, self.args.persona_name
     )
+
+    logger.warning(f"Bot name: {self.args.persona_name}")
 
     logger.info("\nOptions:")
     logger.info("- Press Enter to respawn bot with same URLs")
     logger.info("- Enter 'n' to input new URLs")
+    logger.info("- Enter 'p' to select a new persona")
     logger.info("- Press Ctrl+C to exit")
 
     user_choice = input().strip().lower()
@@ -148,6 +154,9 @@ class BotManager:
       logger.info("User requested new URLs")
       self.args.meeting_url = None
       self.args.ngrok_url = None
+    elif user_choice == "p":
+      logger.info("User requested new persona")
+      self.args.persona_name = None
 
   def delete_current_bot(self):
     if self.current_bot_id:
@@ -173,14 +182,8 @@ def main():
   )
   parser.add_argument("--ngrok-url", help="The ngrok URL (must start with https://)")
   parser.add_argument(
-    "--bot-name",
-    default="Speaking MeetingBaas Bot",
-    help="The name of the bot which is going to join the meeting.",
-  )
-  parser.add_argument(
-    "--bot-image",
-    default="https://utfs.io/f/N2K2zOxB65Cx6UOeGHsoI9OHcetbNxLZB2ErqhAzDfFlMXYK",
-    help="The image of the bot which is going to join the meeting.",
+    "--persona-name",
+    help="The name of the persona to use (e.g., 'interviewer', 'pair_programmer')",
   )
 
   args = parser.parse_args()

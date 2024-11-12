@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-import subprocess
 import argparse
-import time
-import ngrok
-from loguru import logger
+import asyncio
 import os
+import queue
+import subprocess
 import sys
 import threading
-import queue
-import asyncio
-from datetime import datetime
+import time
 from contextlib import suppress
-from typing import Dict, List, Tuple, Optional
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
+import ngrok
 from dotenv import load_dotenv
+from loguru import logger
 
 load_dotenv(override=True)
 
@@ -27,6 +27,7 @@ def validate_url(url):
     raise ValueError("URL must start with https://")
   return url
 
+
 def get_user_input(prompt, validator=None):
   while True:
     user_input = input(prompt).strip()
@@ -37,6 +38,7 @@ def get_user_input(prompt, validator=None):
         logger.warning(f"Invalid input received: {e}")
     else:
       return user_input
+
 
 class ProcessLogger:
   def __init__(self, process_name: str, process: subprocess.Popen):
@@ -191,8 +193,7 @@ class BotProxyManager:
       help="Starting port number (default: 8765)",
     )
     parser.add_argument(
-      "--meeting-url", 
-      help="The meeting URL (must start with https://)"
+      "--meeting-url", help="The meeting URL (must start with https://)"
     )
     args = parser.parse_args()
 
@@ -218,7 +219,13 @@ class BotProxyManager:
         # Start bot
         bot_port = current_port
         bot_name = f"bot_{pair_num}"
-        bot_process = self.run_command(f"poetry run bot -p {bot_port}", bot_name)
+        bot_prompt = f"bot_{pair_num}"
+
+        bot_process = self.run_command(
+          f"poetry run bot -p {bot_port} --system-prompt {bot_prompt} --voice-id {os.getenv('CARTESIA_VOICE_ID')}",
+          bot_name,
+        )
+
         if not bot_process:
           continue
 

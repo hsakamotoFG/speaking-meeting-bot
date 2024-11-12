@@ -1,8 +1,13 @@
 import asyncio
 import os
 import sys
-from loguru import logger
+from datetime import datetime
+
+import aiohttp
+import pytz
 from dotenv import load_dotenv
+from loguru import logger
+from openai.types.chat import ChatCompletionToolParam
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -17,13 +22,7 @@ from pipecat.transports.network.websocket_server import (
   WebsocketServerTransport,
 )
 
-from openai.types.chat import ChatCompletionToolParam
-
 from .runner import configure
-
-import aiohttp
-from datetime import datetime
-import pytz
 
 load_dotenv(override=True)
 
@@ -168,9 +167,7 @@ async def main():
 
   @transport.event_handler("on_client_connected")
   async def on_client_connected(transport, client):
-    messages.append(
-      {"role": "system", "content": "Please introduce yourself to the user."}
-    )
+    messages.append({"role": "system", "content": system_prompt})
     await task.queue_frames([LLMMessagesFrame(messages)])
 
   runner = PipelineRunner()
