@@ -20,7 +20,7 @@ async def configure(
     help="Pipecat WebSocket URL",
   )
   parser.add_argument(
-    "--sample-rate", type=int, default=16000, help="Audio sample rate"
+    "--sample-rate", type=int, default=24000, help="Audio sample rate"
   )
   parser.add_argument(
     "--channels", type=int, default=1, help="Number of audio channels"

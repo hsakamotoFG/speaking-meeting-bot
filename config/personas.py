@@ -176,5 +176,13 @@ def get_persona(name=None):
   """
   import random
 
-  if name is None:
-    return random.choice(list(PERSONAS.values()))
+  interaction_instructions = """
+
+Remember:
+1. Start by clearly stating who you are
+2. When someone new speaks, ask them who they are
+3. Then consider and express how their role/expertise could help you"""
+
+  persona = PERSONAS[name] if name else random.choice(list(PERSONAS.values()))
+  persona["prompt"] = persona["prompt"] + interaction_instructions
+  return persona

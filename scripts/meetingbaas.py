@@ -57,7 +57,7 @@ def create_baas_bot(meeting_url, ngrok_wss, persona_name=None):
     "recording_mode": "speaker_view",
     "bot_image": persona["image"],
     "entry_message": persona["entry_message"],
-    "reserved": True,
+    "reserved": False,
     "speech_to_text": {"provider": "Default"},
     "automatic_leave": {"waiting_room_timeout": 600},
     "deduplication_key": deduplication_key,

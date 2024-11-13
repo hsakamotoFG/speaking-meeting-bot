@@ -28,7 +28,7 @@ async def configure(
 
   args, unknown = parser.parse_known_args()
 
-  # Use command line argument first, then passed parameter
+  # Get system prompt from arguments or passed parameter
   system_prompt = args.system_prompt or system_prompt
 
   if not system_prompt:

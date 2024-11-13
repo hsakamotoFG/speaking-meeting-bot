@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import os
 import queue
+import random
 import subprocess
 import sys
 import threading
@@ -14,6 +15,8 @@ from typing import Dict, List, Optional, Tuple
 import ngrok
 from dotenv import load_dotenv
 from loguru import logger
+
+from config.personas import PERSONAS, get_persona
 
 load_dotenv(override=True)
 
@@ -195,6 +198,12 @@ class BotProxyManager:
     parser.add_argument(
       "--meeting-url", help="The meeting URL (must start with https://)"
     )
+    parser.add_argument(
+      "--persona-name",
+      type=str,
+      required=False,
+      help="Name of the persona to use for the bot",
+    )
     args = parser.parse_args()
 
     meeting_url = args.meeting_url
@@ -219,10 +228,21 @@ class BotProxyManager:
         # Start bot
         bot_port = current_port
         bot_name = f"bot_{pair_num}"
-        bot_prompt = f"bot_{pair_num}"
+
+        # Get a random persona from the available ones
+        persona_name = (
+          args.persona_name
+          if args.persona_name
+          else random.choice(list(PERSONAS.keys()))
+        )
+        persona = get_persona(persona_name)
+        bot_prompt = persona["prompt"]
+        logger.warning(f"**SYSTEM PROMPT in batch.py from choice {persona_name}**")
+        logger.warning(f"System prompt: {bot_prompt}")
+        logger.warning(f"**SYSTEM PROMPT END**")
 
         bot_process = self.run_command(
-          f"poetry run bot -p {bot_port} --system-prompt {bot_prompt} --voice-id {os.getenv('CARTESIA_VOICE_ID')}",
+          f'poetry run bot -p {bot_port} --system-prompt "{bot_prompt}" --voice-id {os.getenv("CARTESIA_VOICE_ID")}',
           bot_name,
         )
 

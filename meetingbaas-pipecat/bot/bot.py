@@ -76,7 +76,7 @@ async def main():
     host=host,
     port=port,
     params=WebsocketServerParams(
-      audio_out_sample_rate=16000,
+      audio_out_sample_rate=24000,
       audio_out_enabled=True,
       add_wav_header=False,
       vad_enabled=True,
@@ -132,19 +132,35 @@ async def main():
   ]
 
   stt = DeepgramSTTService(
-    api_key=os.getenv("DEEPGRAM_API_KEY"), encoding="linear16", sample_rate=16000
+    api_key=os.getenv("DEEPGRAM_API_KEY"), encoding="linear24", sample_rate=24000
   )
 
   tts = CartesiaTTSService(
     api_key=os.getenv("CARTESIA_API_KEY"),
     voice_id=voice_id,
-    sample_rate=16000,
+    sample_rate=24000,
   )
+
+  # trying to send system_prompt warning log
+  logger.warning(f"**SYSTEM PROMPT**")
+  logger.warning(f"System prompt: {system_prompt}")
+  logger.warning(f"**SYSTEM PROMPT END**")
 
   messages = [
     {
       "role": "system",
-      "content": system_prompt,
+      "content": system_prompt
+      + "\n\n"
+      + f"""DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT, you are {system_prompt}"""
+      + "\n\n"
+      + """Remember to:
+1. Start by clearly introducing who you are
+2. When someone new speaks, ask them:
+   - Who they are
+   - What their role is
+3. Then express how their expertise could help you
+4. Stay in character while using the available tools (weather and time). 
+DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT""",
     },
   ]
 
