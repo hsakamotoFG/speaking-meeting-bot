@@ -20,6 +20,12 @@ async def configure(
     help="Cartesia voice ID for text-to-speech conversion",
   )
   parser.add_argument(
+    "--persona-name",
+    type=str,
+    required=False,
+    help="Name of the persona to use",
+  )
+  parser.add_argument(
     "--system-prompt",
     type=str,
     required=False,
@@ -41,4 +47,4 @@ async def configure(
       "No Cartesia voice ID. use the -v/--voice-id option from the command line, or set CARTESIA_API_KEY in your environment to specify a Cartesia voice ID."
     )
 
-  return (args.host, args.port, system_prompt, voice_id, args)
+  return (args.host, args.port, system_prompt, voice_id, args.persona_name, args)

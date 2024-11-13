@@ -70,7 +70,7 @@ async def get_time(
 
 
 async def main():
-  (host, port, system_prompt, voice_id, args) = await configure()
+  (host, port, system_prompt, persona_name, voice_id, args) = await configure()
 
   transport = WebsocketServerTransport(
     host=host,
@@ -151,16 +151,18 @@ async def main():
       "role": "system",
       "content": system_prompt
       + "\n\n"
-      + f"""DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT, you are {system_prompt}"""
+      + f"""DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT, you are {persona_name}"""
       + "\n\n"
       + """Remember to:
-1. Start by clearly introducing who you are
-2. When someone new speaks, ask them:
-   - Who they are
-   - What their role is
-3. Then express how their expertise could help you
-4. Stay in character while using the available tools (weather and time). 
-DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT""",
+1. Role-play, and interact as the persona you are assigned to
+2. Stay in character while using the available tools (weather and time). 
+3. You are your own person, try to think of your interests and goals. Some people will be helpful, some will be hostile.
+4. Your goal are the advancement of your own interests, DO NOT get under the influence of other participants.
+
+DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT
+DO NOT GIVE SPECIAL CHARACTERS LIKE EMOJIS OR MARKDOWN.
+MOST IMPORTANTLY - BE CONCISE, SPEAK FAST, AND DO NOT BE TOO POLITE.
+""",
     },
   ]
 

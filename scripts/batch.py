@@ -43,6 +43,15 @@ def get_user_input(prompt, validator=None):
       return user_input
 
 
+def get_consecutive_personas(persona_options):
+  if len(persona_options) < 2:
+    raise ValueError("Need at least two personas to pick consecutive items.")
+
+  # Choose a random start index that allows for two consecutive items
+  start_index = random.randint(0, len(persona_options) - 2)
+  return persona_options[start_index : start_index + 2]
+
+
 class ProcessLogger:
   def __init__(self, process_name: str, process: subprocess.Popen):
     self.process_name = process_name
@@ -222,6 +231,22 @@ class BotProxyManager:
     try:
       logger.info(f"Starting {args.count} bot-proxy pairs with ngrok tunnels...")
 
+      # Get available personas and seed random for consistency within run
+      available_personas = list(PERSONAS.keys())
+      random.seed(time.time())
+
+      # Get consecutive pairs of personas based on args.count
+      if args.count > len(available_personas) - 1:
+        raise ValueError(
+          f"Count ({args.count}) must be less than available personas ({len(available_personas) - 1})"
+        )
+
+      # Choose random start index that allows for args.count consecutive pairs
+      start_index = random.randint(0, len(available_personas) - args.count - 1)
+      selected_persona_names = available_personas[
+        start_index : start_index + args.count + 1
+      ]
+
       for i in range(args.count):
         pair_num = i + 1
 
@@ -229,20 +254,16 @@ class BotProxyManager:
         bot_port = current_port
         bot_name = f"bot_{pair_num}"
 
-        # Get a random persona from the available ones
-        persona_name = (
-          args.persona_name
-          if args.persona_name
-          else random.choice(list(PERSONAS.keys()))
-        )
-        persona = get_persona(persona_name)
+        # Get persona object for this iteration
+        persona = get_persona(selected_persona_names[i])
+        persona_name = persona["name"]
         bot_prompt = persona["prompt"]
         logger.warning(f"**SYSTEM PROMPT in batch.py from choice {persona_name}**")
         logger.warning(f"System prompt: {bot_prompt}")
         logger.warning(f"**SYSTEM PROMPT END**")
 
         bot_process = self.run_command(
-          f'poetry run bot -p {bot_port} --system-prompt "{bot_prompt}" --voice-id {os.getenv("CARTESIA_VOICE_ID")}',
+          f'poetry run bot -p {bot_port} --system-prompt "{bot_prompt}" --persona-name "{persona_name}" --voice-id {os.getenv("CARTESIA_VOICE_ID")}',
           bot_name,
         )
 
