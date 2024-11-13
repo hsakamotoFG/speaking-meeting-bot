@@ -1,16 +1,17 @@
 [tool.poetry]
-name = "meetingbaas-pipecat"
+name = "meetingbaas_pipecat"
 version = "0.1.0"
 description = "A bot that uses MeetingBaas APIs and pipecat's WebsocketServerTransport to join and actively participate in online meetings."
 authors = ["Anirudh Sriram <hello@techwithanirudh.com>"]
 license = "MIT"
 readme = "README.md"
-packages = [{include = "meetingbaas-pipecat"}]
+packages = [{include = "meetingbaas_pipecat"}]
 
 [tool.poetry.scripts]
-bot = "meetingbaas-pipecat.bot.bot:start"
-proxy = "meetingbaas-pipecat.proxy.proxy:start"
+bot = "meetingbaas_pipecat.bot.bot:start"
+proxy = "meetingbaas_pipecat.proxy.proxy:start"
 meetingbaas = "scripts.meetingbaas:main"
+parallel = "scripts.parallel:main"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -20,13 +21,14 @@ ruff = "^0.7.3"
 pytz = "^2024.2"
 aiohttp = "^3.10.10"
 ngrok = "^1.4.0"
+loguru = "^0.7.2"
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "<=1.67.1"
 
 [tool.ruff]
 line-length = 88
-indent-width = 2
+indent-width = 4
 
 [tool.ruff.format]
 quote-style = "double"
