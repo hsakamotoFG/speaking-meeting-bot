@@ -60,6 +60,9 @@ async def forward_audio(websocket, websocket_url, sample_rate, channels):
                         except Exception as e:
                             logger.error(f"Error processing client frame: {str(e)}")
                             logger.exception(e)
+                    elif isinstance(message, str):
+                        # Handle string messages (e.g., speaker diarization)
+                        logger.info(f"Received string message: {message}")
                     else:
                         logger.warning(f"Unexpected message type: {type(message)}")
             except Exception as e:

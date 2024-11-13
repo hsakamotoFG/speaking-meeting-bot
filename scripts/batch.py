@@ -216,6 +216,11 @@ class BotProxyManager:
             help="Number of bot-proxy pairs to run",
         )
         parser.add_argument(
+            "--personas",
+            nargs="+",
+            help="List of persona names to use (space-separated). If not provided, random personas will be used.",
+        )
+        parser.add_argument(
             "-s",
             "--start-port",
             type=int,
@@ -224,12 +229,6 @@ class BotProxyManager:
         )
         parser.add_argument(
             "--meeting-url", help="The meeting URL (must start with https://)"
-        )
-        parser.add_argument(
-            "--persona-name",
-            type=str,
-            required=False,
-            help="Name of the persona to use for the bot",
         )
         args = parser.parse_args()
 
@@ -249,21 +248,35 @@ class BotProxyManager:
         try:
             logger.info(f"Starting {args.count} bot-proxy pairs with ngrok tunnels...")
 
-            # Get available personas and seed random for consistency within run
+            # Update persona selection logic
             available_personas = list(PERSONAS.keys())
-            random.seed(time.time())
+            selected_persona_names = []
 
-            # Get consecutive pairs of personas based on args.count
-            if args.count > len(available_personas) - 1:
-                raise ValueError(
-                    f"Count ({args.count}) must be less than available personas ({len(available_personas) - 1})"
-                )
+            if args.personas:
+                # Validate provided personas exist
+                for persona_name in args.personas:
+                    if persona_name not in PERSONAS:
+                        raise ValueError(
+                            f"Persona '{persona_name}' not found in available personas"
+                        )
+                    selected_persona_names.append(persona_name)
 
-            # Choose random start index that allows for args.count consecutive pairs
-            start_index = random.randint(0, len(available_personas) - args.count - 1)
-            selected_persona_names = available_personas[
-                start_index : start_index + args.count + 1
-            ]
+            # If we need more personas than provided, fill with random selections
+            if len(selected_persona_names) < args.count:
+                remaining_count = args.count - len(selected_persona_names)
+                # Remove already selected personas from available options
+                remaining_personas = [
+                    p for p in available_personas if p not in selected_persona_names
+                ]
+
+                if remaining_count > len(remaining_personas):
+                    raise ValueError(
+                        f"Not enough remaining personas to select from. Need {remaining_count} more, but only {len(remaining_personas)} available"
+                    )
+
+                random.seed(time.time())
+                random_selections = random.sample(remaining_personas, remaining_count)
+                selected_persona_names.extend(random_selections)
 
             for i in range(args.count):
                 pair_num = i + 1

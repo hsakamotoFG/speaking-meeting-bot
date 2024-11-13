@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from loguru import logger
 from openai.types.chat import ChatCompletionToolParam
 from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.frames.frames import LLMMessagesFrame
+from pipecat.frames.frames import LLMMessagesFrame, TextFrame, TranscriptionFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -71,6 +71,18 @@ async def get_time(
         await result_callback(
             f"Invalid location specified. Could not determine time for {location}."
         )
+
+
+async def log_transcript(frame):
+    if isinstance(frame, TranscriptionFrame):
+        logger.info(f"Transcript received: {frame.text}")
+    return frame
+
+
+async def log_speech(frame):
+    if isinstance(frame, TextFrame):
+        logger.info(f"Speaking out: {frame.text}")
+    return frame
 
 
 async def main():
@@ -195,7 +207,10 @@ MOST IMPORTANTLY - BE CONCISE, SPEAK FAST, AND DO NOT BE TOO POLITE.
         ]
     )
 
-    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
+    task = PipelineTask(
+        pipeline,
+        params=PipelineParams(allow_interruptions=True),
+    )
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
