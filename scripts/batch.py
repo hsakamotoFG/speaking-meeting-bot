@@ -4,6 +4,7 @@ import asyncio
 import os
 import queue
 import random
+import shlex
 import subprocess
 import sys
 import threading
@@ -14,9 +15,9 @@ from typing import Dict, List, Optional, Tuple
 
 import ngrok
 from dotenv import load_dotenv
-from meetingbaas_pipecat.utils.logger import configure_logger
 
 from config.personas import PERSONAS, get_persona
+from meetingbaas_pipecat.utils.logger import configure_logger
 
 load_dotenv(override=True)
 
@@ -118,15 +119,11 @@ class BotProxyManager:
             logger.error(f"Error creating ngrok tunnel for {name}: {e}")
             return None
 
-    def run_command(
-        self, command: str, process_name: str
-    ) -> Optional[subprocess.Popen]:
-        """Run a command and set up logging for its output"""
+    def run_command(self, command: List[str], name: str) -> Optional[subprocess.Popen]:
+        """Run a command and store the process"""
         try:
-            logger.info(f"Starting process: {process_name} with command: {command}")
             process = subprocess.Popen(
                 command,
-                shell=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -134,56 +131,60 @@ class BotProxyManager:
                 universal_newlines=True,
             )
 
-            process_logger = ProcessLogger(process_name, process)
-            stdout_thread, stderr_thread = process_logger.start_logging()
+            def log_output(stream, prefix):
+                for line in stream:
+                    line = line.strip()
+                    if line:
+                        # Check for log level indicators in the line
+                        if "ERROR" in line:
+                            logger.error(f"{prefix}: {line}")
+                        elif "WARNING" in line:
+                            logger.warning(f"{prefix}: {line}")
+                        elif "SUCCESS" in line:
+                            logger.success(f"{prefix}: {line}")
+                        else:
+                            logger.info(f"{prefix}: {line}")
 
-            self.processes[process_name] = {
-                "process": process,
-                "logger": process_logger,
-                "threads": (stdout_thread, stderr_thread),
-            }
+            # Start threads to handle stdout and stderr
+            threading.Thread(
+                target=log_output, args=(process.stdout, f"{name}"), daemon=True
+            ).start()
+            threading.Thread(
+                target=log_output, args=(process.stderr, f"{name}"), daemon=True
+            ).start()
 
+            self.processes[name] = {"process": process, "command": command}
             return process
-
         except Exception as e:
-            logger.error(f"Error starting process {process_name}: {e}")
+            logger.error(f"Failed to start {name}: {e}")
             return None
 
-    async def cleanup(self) -> None:
-        """Cleanup all processes and tunnels"""
-        logger.info("Initiating cleanup of all processes and tunnels...")
-
-        # First close ngrok tunnels
-        for listener in self.listeners:
-            try:
+    async def cleanup(self):
+        """Cleanup all processes and ngrok tunnels"""
+        try:
+            # Close ngrok tunnels
+            for listener in self.listeners:
                 tunnel_url = listener.url()
                 logger.info(f"Closing ngrok tunnel: {tunnel_url}")
-                with suppress(Exception):
-                    await listener.close()
+                listener.close()
                 logger.success(f"Successfully closed ngrok tunnel: {tunnel_url}")
-            except Exception as e:
-                logger.error(f"Error closing ngrok tunnel: {e}")
 
-        # Then terminate all processes
-        for name, process_info in self.processes.items():
-            process = process_info["process"]
-            process_logger = process_info["logger"]
-            try:
+            # Terminate processes
+            for name, process_info in self.processes.items():
                 logger.info(f"Terminating process: {name}")
-                process_logger.stop()  # Stop logging threads gracefully
-                process.terminate()
+                process = process_info["process"]
                 try:
-                    process.wait(timeout=5)
+                    process.terminate()
+                    await asyncio.sleep(1)  # Give process time to terminate gracefully
+                    if process.poll() is None:
+                        process.kill()  # Force kill if still running
                     logger.success(f"Process {name} terminated successfully")
-                except subprocess.TimeoutExpired:
-                    logger.warning(
-                        f"Force killing process {name} that didn't terminate..."
-                    )
-                    process.kill()
-                    process.wait()
-                    logger.success(f"Process {name} force killed")
-            except Exception as e:
-                logger.error(f"Error terminating process {name}: {e}")
+                except Exception as e:
+                    logger.error(f"Error terminating process {name}: {e}")
+
+            logger.success("Cleanup completed successfully")
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
 
     async def monitor_processes(self) -> None:
         """Monitor running processes and handle failures"""
@@ -275,6 +276,7 @@ class BotProxyManager:
                 persona = get_persona(selected_persona_names[i])
                 persona_name = persona["name"]
                 bot_prompt = persona["prompt"]
+                logger.warning(f"**BOT NAME: {persona_name}**")
                 logger.warning(
                     f"**SYSTEM PROMPT in batch.py from choice {persona_name}**"
                 )
@@ -282,7 +284,19 @@ class BotProxyManager:
                 logger.warning(f"**SYSTEM PROMPT END**")
 
                 bot_process = self.run_command(
-                    f'poetry run bot -p {bot_port} --system-prompt "{bot_prompt}" --persona-name "{persona_name}" --voice-id {os.getenv("CARTESIA_VOICE_ID")}',
+                    [
+                        "poetry",
+                        "run",
+                        "bot",
+                        "-p",
+                        str(bot_port),
+                        "--system-prompt",
+                        bot_prompt,
+                        "--persona-name",
+                        persona_name,
+                        "--voice-id",
+                        "40104aff-a015-4da1-9912-af950fbec99e",
+                    ],
                     bot_name,
                 )
 
@@ -295,7 +309,15 @@ class BotProxyManager:
                 proxy_port = current_port + 1
                 proxy_name = f"proxy_{pair_num}"
                 proxy_process = self.run_command(
-                    f"poetry run proxy -p {proxy_port} --websocket-url ws://localhost:{bot_port}",
+                    [
+                        "poetry",
+                        "run",
+                        "proxy",
+                        "-p",
+                        str(proxy_port),
+                        "--websocket-url",
+                        f"ws://localhost:{bot_port}",
+                    ],
                     proxy_name,
                 )
                 if not proxy_process:
@@ -313,7 +335,17 @@ class BotProxyManager:
                     self.listeners.append(listener)
                     meeting_name = f"meeting_{pair_num}"
                     meeting_process = self.run_command(
-                        f"poetry run meetingbaas --meeting-url {meeting_url} --ngrok-url {listener.url()}",
+                        [
+                            "poetry",
+                            "run",
+                            "meetingbaas",
+                            "--meeting-url",
+                            meeting_url,
+                            "--persona-name",
+                            persona_name,
+                            "--ngrok-url",
+                            listener.url(),
+                        ],
                         meeting_name,
                     )
                     if not meeting_process:

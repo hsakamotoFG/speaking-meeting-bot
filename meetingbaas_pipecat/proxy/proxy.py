@@ -4,10 +4,10 @@ import sys
 import websockets
 from google.protobuf.message import EncodeError
 from loguru import logger
-from meetingbaas_pipecat.utils.logger import configure_logger
 from websockets.exceptions import ConnectionClosedError
 
 import protobufs.frames_pb2 as frames_pb2
+from meetingbaas_pipecat.utils.logger import configure_logger
 
 from .runner import configure
 
@@ -61,7 +61,7 @@ async def forward_audio(websocket, websocket_url, sample_rate, channels):
                             logger.error(f"Error processing client frame: {str(e)}")
                             logger.exception(e)
                     else:
-                        logger.info(f"Received non-bytes message: {message}, ignoring")
+                        logger.warning(f"Unexpected message type: {type(message)}")
             except Exception as e:
                 logger.error(f"Error in client message handler: {str(e)}")
                 logger.exception(e)

@@ -7,7 +7,6 @@ import aiohttp
 import pytz
 from dotenv import load_dotenv
 from loguru import logger
-from meetingbaas_pipecat.utils.logger import configure_logger
 from openai.types.chat import ChatCompletionToolParam
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesFrame
@@ -19,9 +18,12 @@ from pipecat.services.cartesia import CartesiaTTSService
 from pipecat.services.deepgram import DeepgramSTTService
 from pipecat.services.openai import OpenAILLMService
 from pipecat.transports.network.websocket_server import (
+    ProtobufFrameSerializer,
     WebsocketServerParams,
     WebsocketServerTransport,
 )
+
+from meetingbaas_pipecat.utils.logger import configure_logger
 
 from .runner import configure
 
@@ -72,7 +74,13 @@ async def get_time(
 
 
 async def main():
-    (host, port, system_prompt, persona_name, voice_id, args) = await configure()
+    # Make sure we use the correct order
+    (host, port, system_prompt, voice_id, persona_name, args) = await configure()
+
+    logger.warning(f"**CARTESIA VOICE ID: {voice_id}**")
+    logger.warning(f"**BOT NAME: {persona_name}**")
+    logger.warning(f"**SYSTEM PROMPT**")
+    logger.warning(f"System prompt: {system_prompt}")
 
     transport = WebsocketServerTransport(
         host=host,
@@ -84,6 +92,9 @@ async def main():
             vad_enabled=True,
             vad_analyzer=SileroVADAnalyzer(),
             vad_audio_passthrough=True,
+            # binary_mode=True,
+            # should be ProtobufFrameSerializer?
+            # serializer=ProtobufSerializer(),
         ),
     )
 
@@ -143,10 +154,11 @@ async def main():
         sample_rate=24000,
     )
 
-    # trying to send system_prompt warning log
+    logger.warning(f"**BOT NAME: {persona_name}**")
     logger.warning(f"**SYSTEM PROMPT**")
     logger.warning(f"System prompt: {system_prompt}")
     logger.warning(f"**SYSTEM PROMPT END**")
+    logger.warning(f"**FOR BOT NAME: {persona_name}**")
 
     messages = [
         {

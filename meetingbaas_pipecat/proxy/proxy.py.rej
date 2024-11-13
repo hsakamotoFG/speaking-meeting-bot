@@ -1,0 +1,15 @@
+diff a/meetingbaas_pipecat/proxy/proxy.py b/meetingbaas_pipecat/proxy/proxy.py	(rejected hunks)
+@@ -45,6 +45,13 @@ async def forward_audio(websocket, websocket_url, sample_rate, channels):
+ 
+             try:
+                 async for message in websocket:
++                    if isinstance(message, str):
++                        try:
++                            message = message.encode("utf-8")
++                        except UnicodeEncodeError as e:
++                            logger.error(f"Failed to encode message: {e}")
++                            continue
++
+                     if isinstance(message, bytes):
+                         try:
+                             frame = frames_pb2.Frame()
