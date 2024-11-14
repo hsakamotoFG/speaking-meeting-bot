@@ -1,6 +1,6 @@
 # Speaking Bot
 
-Deploy AI-powered meeting agents that can join and participate in online meetings. These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
+Deploy AI-powered meeting agents that can join and participate in Zoom and Microsoft Teams (and soon on Teams!). These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
 
 ## Overview
 
@@ -9,6 +9,64 @@ The Meeting Agent Bot allows you to:
 -   Launch one or more AI agents into Google Meet or Microsoft Teams (Zoom is due ASAP)
 -   Give each agent a unique personality and conversation style
 -   Run multiple instances locally or scale to web deployment
+
+## Technical Stack
+
+This bot utilizes:
+
+-   MeetingBaas's APIs for meeting interactions
+-   Pipecat's `WebsocketServerTransport` for real-time communication
+-   Ngrok for local server exposure
+
+### Multiple Instance Architecture
+
+When running multiple bot instances:
+
+-   Each bot requires a unique public Ngrok URL
+-   MeetingBaas communicates with each bot through its dedicated WebSocket
+-   Pipecat handles the real-time message routing
+
+**Current Limitations**
+
+Currently, the app only supports 2 simultaneous agents in meetings, limited by local development and ngrok.
+
+**Running Meeting Agents**
+
+To run 1 or 2 meeting agents in a meeting, execute the following commands:
+
+```bash
+# For 1 agent
+poetry run python scripts/batch.py -c 1 --meeting-url (GOOGLE_MEET-TEAMS)-link
+
+# For 2 agents
+poetry run python scripts/batch.py -c 2 --meeting-url (GOOGLE_MEET-TEAMS)-link
+
+# For 2 agents with chosen personalities
+poetry run python scripts/batch.py -c 2 --meeting-url (GOOGLE_MEET-TEAMS)-link --personas water_merchant arctic_prospector
+```
+
+## Persona Configuration
+
+### Structure
+
+Personas are stored in the `@personas` directory. Each persona has:
+
+-   A README.md defining their personality
+-   Space for additional markdown files to expand behavior
+-   Consistent characteristics across all personas:
+    -   Gen-Z speech patterns
+    -   Technical expertise
+    -   Playful personality
+    -   Domain-specific knowledge
+
+### Example Persona Structure
+
+```
+@personas/
+└── quantum_physicist/
+    ├── README.md
+    └── (additional behavior files)
+```
 
 ## Prerequisites
 
@@ -78,29 +136,6 @@ ngrok start --all --config ~/.config/ngrok/ngrok.yml,./config/ngrok/config.yml
 ### Web Deployment
 
 For more than 2 agents, deploy to a web server to avoid Ngrok limitations.
-
-## Persona Configuration
-
-### Structure
-
-Personas are stored in the `@personas` directory. Each persona has:
-
--   A README.md defining their personality
--   Space for additional markdown files to expand behavior
--   Consistent characteristics across all personas:
-    -   Gen-Z speech patterns
-    -   Technical expertise
-    -   Playful personality
-    -   Domain-specific knowledge
-
-### Example Persona Structure
-
-```
-@personas/
-  └── quantum_physicist/
-      ├── README.md
-      └── (additional behavior files)
-```
 
 ## Future Extensibility
 
