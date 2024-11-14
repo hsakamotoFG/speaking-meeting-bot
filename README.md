@@ -1,103 +1,128 @@
-# Speaking Meeting Bot Documentation
+# Speaking Bot
 
-This document provides step-by-step instructions on how to set up and run a Speaking Meeting Bot, which utilizes MeetingBaas's APIs and pipecat's `WebsocketServerTransport` to participate in online meetings as a speaking bot. You can also set up multiple instances of the bot to join different meetings simultaneously.
+Deploy AI-powered meeting agents that can join and participate in online meetings. These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
+
+## Overview
+
+The Meeting Agent Bot allows you to:
+
+-   Launch one or more AI agents into Google Meet or Microsoft Teams (Zoom is due ASAP)
+-   Give each agent a unique personality and conversation style
+-   Run multiple instances locally or scale to web deployment
 
 ## Prerequisites
 
-- Python 3.x installed
-- `grpc_tools` for handling gRPC protobuf files
-- Ngrok for exposing your local server to the internet
-- Poetry for managing dependencies
+-   Python 3.x
+-   `grpc_tools` for protocol buffer compilation
+-   Ngrok (for local deployment)
+-   Poetry for dependency management
 
-## Getting Started
+## Installation
 
-### Step 1: Set Up the Virtual Environment
-To begin, you need to set up the Python environment using Poetry and install the required dependencies.
+### 1. Set Up Poetry Environment
 
 ```bash
-# Install Poetry if not already installed
-# For Unix/macOS:
+# Install Poetry (Unix/macOS)
 curl -sSL https://install.python-poetry.org | python3 -
 
-# For Windows:
+# Install Poetry (Windows)
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
 
-# Install the required dependencies using Poetry
+# Install dependencies
 poetry install
 
-# Activate the virtual environment
+# Activate virtual environment
 poetry shell
 ```
 
-### Step 2: Compile Protocol Buffers
-To enable communication with MeetingBaas's API, you need to compile the `frames.proto` file with `grpc_tools`.
+### 2. Compile Protocol Buffers
 
 ```bash
-# Compile the protobuf file
 poetry run python -m grpc_tools.protoc --proto_path=./protobufs --python_out=./protobufs frames.proto
 ```
 
-### Step 3: Set Up Environment Variables
-You need to provide the necessary credentials for MeetingBaas's API.
+### 3. Configure Environment
 
 ```bash
-# Copy the example environment file
 cp env.example .env
 ```
 
-Open the `.env` file and update it with your MeetingBaas credentials.
+Edit `.env` with your MeetingBaas credentials.
 
-## Running Multiple Instances of the Speaking Meeting Bot
+## Running Meeting Agents
 
-Once your setup is complete, follow these steps to run multiple instances of the bot and connect each to an online meeting.
+### Single Agent Deployment
 
-### Step 1: Run the Bot with Parallel Instances
-To create two simultaneous bot instances, use the following command to run the parallel script:
+To launch one agent into a meeting:
 
 ```bash
-poetry run python scripts/parallel.py -c 2
+poetry run python scripts/batch.py -c 1 --meeting-url <your-meeting-url>
 ```
 
-This will initiate two instances of the bot. In this setup, each bot instance will require a unique public URL from ngrok, which we will set up in the next steps.
+### Multiple Agent Deployment
 
-### Step 2: Set Up Ngrok for Each Bot Instance
-To allow MeetingBaas to communicate with both bots, you need to expose two local servers on different ngrok URLs. Open terminal to run this command:
+To launch two agents simultaneously:
 
+```bash
+poetry run python scripts/batch.py -c 2 --meeting-url <your-meeting-url>
 ```
+
+### Local Deployment with Ngrok
+
+For 1-2 agents, use Ngrok to expose your local server:
+
+```bash
 ngrok start --all --config ~/.config/ngrok/ngrok.yml,./config/ngrok/config.yml
 ```
 
-Each of these URLs can now be used to communicate with the respective bot instance via MeetingBaas.
+### Web Deployment
 
-### Step 3: Start the MeetingBaas Bot in Multiple Terminals
-Now, you need to start `meetingbaas` for each bot instance, pointing each one to its unique ngrok URL and meeting session URL. Open two additional terminals and run the following commands:
+For more than 2 agents, deploy to a web server to avoid Ngrok limitations.
 
-1. **In Terminal 3**:
-   ```bash
-   poetry run meetingbaas --url <ngrok-url-instance-1> --meeting-url <meeting-url-1>
-   ```
-   Replace `<ngrok-url-instance-1>` with the public URL from ngrok for the first bot and `<meeting-url-1>` with the meeting URL for the first session.
+## Persona Configuration
 
-2. **In Terminal 4**:
-   ```bash
-   poetry run meetingbaas --url <ngrok-url-instance-2> --meeting-url <meeting-url-2>
-   ```
-   Replace `<ngrok-url-instance-2>` with the public URL for the second bot and `<meeting-url-2>` with the meeting URL for the second session.
+### Structure
 
-With these commands, each bot instance should now be connected to its respective meeting.
+Personas are stored in the `@personas` directory. Each persona has:
 
-## Troubleshooting Tips
-- Ensure that you have activated the Poetry environment before running any Python commands.
-- If Ngrok is not running properly, check for any firewall issues that may be blocking its communication.
-- Double-check the `.env` file to make sure all necessary credentials are correctly filled in.
-- Ensure each instance has a unique ngrok URL and meeting session to avoid conflicts.
+-   A README.md defining their personality
+-   Space for additional markdown files to expand behavior
+-   Consistent characteristics across all personas:
+    -   Gen-Z speech patterns
+    -   Technical expertise
+    -   Playful personality
+    -   Domain-specific knowledge
 
-## Additional Information
-- MeetingBaas allows integration with external bots using APIs that leverage `WebsocketServerTransport` for real-time communication.
-- For more details on the MeetingBaas APIs and functionalities, please refer to the official MeetingBaas documentation.
+### Example Persona Structure
 
-## Example Usage
-After setting up everything, the bot will actively join the meeting and communicate using the MeetingBaas WebSocket API. You can test different bot behaviors by modifying the `meetingbaas.py` script to suit your meeting requirements.
+```
+@personas/
+  └── quantum_physicist/
+      ├── README.md
+      └── (additional behavior files)
+```
 
-Happy meeting automation!
+## Future Extensibility
 
+The persona architecture is designed to support:
+
+-   Additional behavior files
+-   More detailed conversation patterns
+-   Specialized knowledge bases
+-   Custom interaction styles
+
+## Troubleshooting
+
+-   Verify Poetry environment is activated
+-   Check Ngrok connection status
+-   Validate environment variables
+-   Ensure unique Ngrok URLs for multiple agents
+
+## Best Practices
+
+-   Test personas in a private meeting first
+-   Monitor agent behavior during initial deployment
+-   Keep meeting URLs secure
+-   Regular updates to persona configurations
+
+For more detailed information about specific personas or deployment options, check the respective documentation in the `@personas` directory.
