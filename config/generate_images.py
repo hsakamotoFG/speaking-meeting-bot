@@ -218,86 +218,80 @@ def generate_image_worker(
     """Worker function for generating a single image"""
     try:
         logger.info(f"[{persona_name}] Starting image generation")
-        url = "https://modelslab.com/api/v6/realtime/txt2img"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        }
+        url = "https://modelslab.com/api/v6/images/text2img"
+
+        # Updated model IDs to match API expectations
+        models_to_try = [
+            "sd_xl_base_1.0",  # Stable Diffusion XL
+            "sd_v1.5",  # Stable Diffusion 1.5
+            "anything_v5",  # Anything V5
+        ]
 
         payload = {
+            "key": api_key,
+            "model_id": models_to_try[0],  # Changed 'model' to 'model_id'
             "prompt": prompt,
             "negative_prompt": "photorealistic, 3D, realistic, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, distorted, human face, human hands, human skin",
-            "width": 1920,
-            "height": 1080,
-            "samples": 1,
-            "scheduler": "UniPC",
-            "num_inference_steps": 25,
-            "guidance_scale": 7.5,
+            "width": "1024",  # Reduced size for better compatibility
+            "height": "1024",
+            "samples": "1",
+            "num_inference_steps": "25",
+            "safety_checker": "no",
             "enhance_prompt": "yes",
-            "seed": -1,
-            "base64": "no",
+            "temp": "yes",
+            "guidance_scale": 7.5,
+            "seed": None,
             "webhook": None,
+            "track_id": None,
         }
 
-        # Validate API key
-        if not api_key or len(api_key) < 10:  # Basic validation
-            raise ValueError(f"[{persona_name}] Invalid API key format")
-
-        # Log full request details
-        logger.debug(f"[{persona_name}] Request URL: {url}")
-        logger.debug(f"[{persona_name}] Request headers: {headers}")
-        logger.debug(f"[{persona_name}] Request payload: {payload}")
-
         try:
-            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response = requests.post(url, json=payload, timeout=30)
             logger.debug(f"[{persona_name}] Response status: {response.status_code}")
             logger.debug(f"[{persona_name}] Response headers: {dict(response.headers)}")
             logger.debug(f"[{persona_name}] Raw response: {response.text}")
-        except requests.exceptions.Timeout:
-            raise Exception(f"[{persona_name}] Request timed out after 30 seconds")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"[{persona_name}] Request failed: {str(e)}")
 
-        if response.status_code == 401:
-            raise Exception(f"[{persona_name}] Authentication failed - check API key")
-        elif response.status_code == 429:
-            raise Exception(f"[{persona_name}] Rate limit exceeded")
-        elif response.status_code != 200:
-            raise Exception(
-                f"[{persona_name}] API error {response.status_code}: {response.text}"
-            )
+            if response.status_code != 200:
+                raise Exception(
+                    f"[{persona_name}] API error {response.status_code}: {response.text}"
+                )
 
-        try:
             data = response.json()
-        except ValueError as e:
-            raise Exception(f"[{persona_name}] Failed to parse JSON response: {str(e)}")
 
-        if not data:
-            raise Exception(f"[{persona_name}] Empty response from API")
+            if data.get("status") == "processing":
+                fetch_id = data.get("id")
+                if not fetch_id:
+                    raise Exception(f"No fetch ID in response. Full response: {data}")
 
-        fetch_url = data.get("fetch_result")
-        if not fetch_url:
-            raise Exception(f"No fetch URL in response. Full response: {data}")
+                fetch_url = f"https://modelslab.com/api/v3/fetch/{fetch_id}"
 
-        # Poll for results
-        max_attempts = 30
-        poll_interval = 2
+                max_attempts = 30
+                poll_interval = 2
 
-        logger.info(
-            f"[{persona_name}] Image processing, estimated time: {data.get('eta', 'unknown')} seconds"
-        )
+                for _ in range(max_attempts):
+                    time.sleep(poll_interval)
+                    fetch_response = requests.post(fetch_url, json={"key": api_key})
 
-        for poll_attempt in range(max_attempts):
-            time.sleep(poll_interval)
+                    if fetch_response.status_code == 200:
+                        fetch_data = fetch_response.json()
+                        if fetch_data.get("status") == "success":
+                            output_urls = fetch_data.get("output", [])
+                            if output_urls:
+                                image_url = output_urls[0]
+                                image_response = requests.get(image_url)
+                                if image_response.status_code == 200:
+                                    output_path.parent.mkdir(
+                                        parents=True, exist_ok=True
+                                    )
+                                    with open(output_path, "wb") as f:
+                                        f.write(image_response.content)
+                                    logger.success(
+                                        f"[{persona_name}] Image saved to {output_path}"
+                                    )
+                                    return True
 
-            fetch_response = requests.get(fetch_url, headers=headers)
-            if fetch_response.status_code != 200:
-                continue
-
-            fetch_data = fetch_response.json()
-
-            if fetch_data.get("status") == "success":
-                output_urls = fetch_data.get("output", [])
+            elif data.get("status") == "success":
+                output_urls = data.get("output", [])
                 if output_urls:
                     image_url = output_urls[0]
                     image_response = requests.get(image_url)
@@ -308,12 +302,34 @@ def generate_image_worker(
                         logger.success(f"[{persona_name}] Image saved to {output_path}")
                         return True
 
-        raise Exception("Timed out waiting for image generation")
+            raise Exception("Failed to generate or fetch image")
+
+        except requests.exceptions.Timeout:
+            raise Exception(f"[{persona_name}] Request timed out after 30 seconds")
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"[{persona_name}] Request failed: {str(e)}")
 
     except Exception as e:
         logger.error(f"[{persona_name}] Error generating image: {str(e)}")
         logger.exception(f"[{persona_name}] Full error details:")
         return False
+
+
+def get_available_models(api_key: str) -> list:
+    """Fetch list of available models from ModelsLab API"""
+    try:
+        url = "https://modelslab.com/api/v4/dreambooth/model_list"
+        payload = {"key": api_key}
+
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            raise Exception(f"API error {response.status_code}: {response.text}")
+
+        models = response.json()
+        return models
+    except Exception as e:
+        logger.error(f"Error fetching models: {str(e)}")
+        return []
 
 
 def main():
@@ -324,6 +340,22 @@ def main():
 
     api_key = sys.argv[1]
     logger.info("Starting image generation process")
+
+    # First, let's get available models
+    logger.info("Fetching available models...")
+    models = get_available_models(api_key)
+    if models:
+        logger.info("Available models:")
+        for model in models:
+            # Handle both string and dictionary formats
+            if isinstance(model, dict):
+                logger.info(
+                    f"- {model.get('model_name', 'Unknown')} (ID: {model.get('model_id', 'Unknown')})"
+                )
+            else:
+                logger.info(f"- {model}")
+    else:
+        logger.warning("No models found or error fetching models")
 
     # Load personas from JSON
     json_path = Path(__file__).parent / "personas.json"
