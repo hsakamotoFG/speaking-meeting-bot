@@ -11,13 +11,15 @@ from typing import Optional
 import requests
 from loguru import logger
 
+from config.persona_utils import PersonaManager
+
 
 class UTFSUploader:
     def __init__(self, api_key: str, app_id: str):
         self.api_key = api_key
         self.app_id = app_id
         self.base_url = "https://api.uploadthing.com"  # Updated base URL
-        self.personas_file = "config/personas.json"
+        self.persona_manager = PersonaManager()
         self.uploaded_urls = self._load_existing_urls()
 
         # Configure logger levels
@@ -26,24 +28,14 @@ class UTFSUploader:
 
     def _load_existing_urls(self) -> dict:
         """Load existing image URLs from personas.json"""
-        try:
-            with open(self.personas_file, "r") as f:
-                personas = json.load(f)
-                # Assuming personas is a list of dictionaries
-                urls = {}
-                for persona in personas:
-                    if isinstance(persona, dict) and "key" in persona:
-                        urls[persona["key"]] = persona.get("imageUrl")
-                return urls
-        except Exception as e:
-            logger.error(f"Failed to load existing URLs: {e}")
-            return {}
+        personas = self.persona_manager.load_personas()
+        return {key: persona.get("image") for key, persona in personas.items()}
 
     def _image_needs_upload(self, persona_key: str) -> bool:
         """Check if image needs to be uploaded"""
-        return (
-            persona_key not in self.uploaded_urls or not self.uploaded_urls[persona_key]
-        )
+        # Check if URL exists and is from uploadthing.com
+        current_url = self.uploaded_urls.get(persona_key, "")
+        return not (current_url and "uploadthing.com" in current_url)
 
     def upload_file(
         self, file_path: Path, custom_id: Optional[str] = None
@@ -298,10 +290,10 @@ def main():
             return 1
 
         if args.batch:
-            # Batch upload from local_images directory
-            local_images_dir = Path("./config/local_images")
+            # Update the path to be relative to the project root
+            local_images_dir = Path(__file__).parent / "local_images"
             if not local_images_dir.exists() or not local_images_dir.is_dir():
-                logger.error("local_images directory not found")
+                logger.error(f"local_images directory not found at {local_images_dir}")
                 return 1
 
             # Process each image file in the directory
@@ -320,7 +312,7 @@ def main():
 
                 if not file_url:
                     logger.error(f"Failed to upload {image_file}")
-                    return 1
+                    continue  # Changed from return 1 to continue to process other files
 
                 logger.success(f"Successfully uploaded: {image_file} -> {file_url}")
 

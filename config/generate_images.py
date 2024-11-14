@@ -11,6 +11,9 @@ import replicate
 import requests
 from loguru import logger
 
+from config.image_uploader import UTFSUploader
+from config.persona_utils import PersonaManager
+
 
 def create_prompt_for_persona(persona: Dict) -> str:
     """Create an appropriate prompt for Stable Diffusion based on persona details."""
@@ -286,26 +289,38 @@ def get_available_models(api_key: str) -> list:
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) != 7:
         logger.error("Missing arguments")
-        print("Usage: python generate_images.py --api-key <api_key>")
+        print(
+            "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+        )
         sys.exit(1)
 
-    if sys.argv[1] != "--api-key":
-        logger.error("First argument must be --api-key")
-        print("Usage: python generate_images.py --api-key <api_key>")
+    if (
+        sys.argv[1] != "--replicate-key"
+        or sys.argv[3] != "--utfs-key"
+        or sys.argv[5] != "--app-id"
+    ):
+        logger.error(
+            "Arguments must be --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+        )
+        print(
+            "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+        )
         sys.exit(1)
 
-    api_key = sys.argv[2]
+    replicate_api_key = sys.argv[2]  # This is the r8_* key for replicate
+    utfs_api_key = sys.argv[4]  # The UTFS key
+    app_id = sys.argv[6]
 
-    # Remove 'sk_live_' prefix if present
-    api_key = api_key.replace("sk_live_", "")
+    # Remove 'sk_live_' prefix if present from replicate key
+    replicate_api_key = replicate_api_key.replace("sk_live_", "")
 
     logger.info("Starting image generation process")
 
     # First, let's get available models
     logger.info("Fetching available models...")
-    models = get_available_models(api_key)
+    models = get_available_models(replicate_api_key)
     if models:
         logger.info("Available models:")
         for model in models:
@@ -319,10 +334,9 @@ def main():
     else:
         logger.warning("No models found or error fetching models")
 
-    # Load personas from JSON
-    json_path = Path(__file__).parent / "personas.json"
-    with open(json_path, "r", encoding="utf-8") as f:
-        personas = json.load(f)
+    # Initialize PersonaManager
+    persona_manager = PersonaManager()
+    personas = persona_manager.load_personas()
 
     # Create images directory (updated path)
     images_dir = Path(__file__).parent / "local_images"
@@ -334,7 +348,7 @@ def main():
         if not persona.get("image"):
             prompt = create_prompt_for_persona(persona)
             image_path = images_dir / f"{key}.png"
-            tasks.append((prompt, api_key, image_path, persona["name"]))
+            tasks.append((prompt, replicate_api_key, image_path, persona["name"]))
 
     # Process tasks with limited concurrency
     max_concurrent = 3
@@ -360,10 +374,38 @@ def main():
                 logger.error(f"✗ Failed to generate image for {persona_name}: {str(e)}")
 
         # Save updated JSON
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(personas, f, indent=2, ensure_ascii=False)
+        persona_manager.save_personas(personas)
 
-    logger.success("Image generation complete!")
+    # After successful image generation, upload to UTFS
+    uploader = UTFSUploader(api_key=utfs_api_key, app_id=app_id)
+
+    # Verify UTFS credentials before proceeding
+    if not uploader.verify_credentials():
+        logger.error("Invalid UTFS credentials")
+        return 1
+
+    for persona_name, result in results:
+        try:
+            success = result.get()
+            if success:
+                key = next(k for k, v in personas.items() if v["name"] == persona_name)
+                # Use absolute path instead of relative
+                local_image_path = images_dir / f"{key}.png"
+
+                # Update local image path
+                persona_manager.update_persona_image(key, str(local_image_path))
+
+                # Upload to UTFS using the absolute path
+                file_url = uploader.upload_file(local_image_path)
+                if file_url:
+                    persona_manager.update_persona_image_url(key, file_url)
+                    logger.success(
+                        f"✓ Successfully generated and uploaded image for {persona_name}"
+                    )
+        except Exception as e:
+            logger.error(f"✗ Failed to process image for {persona_name}: {str(e)}")
+
+    logger.success("Image generation and upload complete!")
 
 
 if __name__ == "__main__":
