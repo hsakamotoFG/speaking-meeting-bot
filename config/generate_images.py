@@ -1,11 +1,13 @@
 import json
 import multiprocessing as mp
+import os
 import random
 import sys
 import time
 from pathlib import Path
 from typing import Dict
 
+import replicate
 import requests
 from loguru import logger
 
@@ -218,96 +220,47 @@ def generate_image_worker(
     """Worker function for generating a single image"""
     try:
         logger.info(f"[{persona_name}] Starting image generation")
-        url = "https://modelslab.com/api/v6/images/text2img"
 
-        # Updated model IDs to match API expectations
-        models_to_try = [
-            "sd_xl_base_1.0",  # Stable Diffusion XL
-            "sd_v1.5",  # Stable Diffusion 1.5
-            "anything_v5",  # Anything V5
-        ]
+        # Remove 'sk_live_' prefix if present
+        clean_api_key = api_key.replace("sk_live_", "")
 
-        payload = {
-            "key": api_key,
-            "model_id": models_to_try[0],  # Changed 'model' to 'model_id'
-            "prompt": prompt,
-            "negative_prompt": "photorealistic, 3D, realistic, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, distorted, human face, human hands, human skin",
-            "width": "1024",  # Reduced size for better compatibility
-            "height": "1024",
-            "samples": "1",
-            "num_inference_steps": "25",
-            "safety_checker": "no",
-            "enhance_prompt": "yes",
-            "temp": "yes",
-            "guidance_scale": 7.5,
-            "seed": None,
-            "webhook": None,
-            "track_id": None,
-        }
+        # Set the API token for this process
+        os.environ["REPLICATE_API_TOKEN"] = clean_api_key
 
-        try:
-            response = requests.post(url, json=payload, timeout=30)
-            logger.debug(f"[{persona_name}] Response status: {response.status_code}")
-            logger.debug(f"[{persona_name}] Response headers: {dict(response.headers)}")
-            logger.debug(f"[{persona_name}] Raw response: {response.text}")
+        logger.debug(f"[{persona_name}] Using API key: {clean_api_key[:8]}...")
 
-            if response.status_code != 200:
-                raise Exception(
-                    f"[{persona_name}] API error {response.status_code}: {response.text}"
-                )
+        # Run SDXL with the given prompt using the latest version
+        output = replicate.run(
+            "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
+            input={
+                "prompt": prompt,
+                "width": 768,
+                "height": 768,
+                "refine": "expert_ensemble_refiner",
+                "apply_watermark": False,
+                "num_inference_steps": 25,
+                "negative_prompt": "photorealistic, 3D, realistic, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, distorted, human face, human hands, human skin",
+            },
+        )
 
-            data = response.json()
+        # Save the generated image
+        if output and len(output) > 0:
+            # Get the image URL
+            image_url = output[0]
 
-            if data.get("status") == "processing":
-                fetch_id = data.get("id")
-                if not fetch_id:
-                    raise Exception(f"No fetch ID in response. Full response: {data}")
+            # Download the image
+            response = requests.get(image_url)
+            response.raise_for_status()
 
-                fetch_url = f"https://modelslab.com/api/v3/fetch/{fetch_id}"
+            # Save to file
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(output_path, "wb") as f:
+                f.write(response.content)
 
-                max_attempts = 30
-                poll_interval = 2
-
-                for _ in range(max_attempts):
-                    time.sleep(poll_interval)
-                    fetch_response = requests.post(fetch_url, json={"key": api_key})
-
-                    if fetch_response.status_code == 200:
-                        fetch_data = fetch_response.json()
-                        if fetch_data.get("status") == "success":
-                            output_urls = fetch_data.get("output", [])
-                            if output_urls:
-                                image_url = output_urls[0]
-                                image_response = requests.get(image_url)
-                                if image_response.status_code == 200:
-                                    output_path.parent.mkdir(
-                                        parents=True, exist_ok=True
-                                    )
-                                    with open(output_path, "wb") as f:
-                                        f.write(image_response.content)
-                                    logger.success(
-                                        f"[{persona_name}] Image saved to {output_path}"
-                                    )
-                                    return True
-
-            elif data.get("status") == "success":
-                output_urls = data.get("output", [])
-                if output_urls:
-                    image_url = output_urls[0]
-                    image_response = requests.get(image_url)
-                    if image_response.status_code == 200:
-                        output_path.parent.mkdir(parents=True, exist_ok=True)
-                        with open(output_path, "wb") as f:
-                            f.write(image_response.content)
-                        logger.success(f"[{persona_name}] Image saved to {output_path}")
-                        return True
-
-            raise Exception("Failed to generate or fetch image")
-
-        except requests.exceptions.Timeout:
-            raise Exception(f"[{persona_name}] Request timed out after 30 seconds")
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"[{persona_name}] Request failed: {str(e)}")
+            logger.success(f"[{persona_name}] Image saved to {output_path}")
+            return True
+        else:
+            raise Exception("No output received from model")
 
     except Exception as e:
         logger.error(f"[{persona_name}] Error generating image: {str(e)}")
@@ -333,12 +286,21 @@ def get_available_models(api_key: str) -> list:
 
 
 def main():
-    if len(sys.argv) != 2:
-        logger.error("Missing API key argument")
-        print("Usage: python generate_images.py <api_key>")
+    if len(sys.argv) != 3:
+        logger.error("Missing arguments")
+        print("Usage: python generate_images.py --api-key <api_key>")
         sys.exit(1)
 
-    api_key = sys.argv[1]
+    if sys.argv[1] != "--api-key":
+        logger.error("First argument must be --api-key")
+        print("Usage: python generate_images.py --api-key <api_key>")
+        sys.exit(1)
+
+    api_key = sys.argv[2]
+
+    # Remove 'sk_live_' prefix if present
+    api_key = api_key.replace("sk_live_", "")
+
     logger.info("Starting image generation process")
 
     # First, let's get available models
