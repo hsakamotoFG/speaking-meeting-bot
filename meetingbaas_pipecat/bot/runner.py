@@ -3,7 +3,7 @@ import os
 
 from loguru import logger
 
-from config.personas import get_persona_by_name
+from config.persona_utils import persona_manager
 
 
 async def configure(
@@ -34,7 +34,7 @@ async def configure(
 
     logger.warning(f"**FOR ARGS: {args}**")
     # Get persona based on name or random if none provided
-    persona = get_persona_by_name(args.persona_name)
+    persona = persona_manager.get_persona(args.persona_name)
 
     # Use persona's prompt as system prompt if no override provided
     system_prompt = system_prompt or persona["prompt"]

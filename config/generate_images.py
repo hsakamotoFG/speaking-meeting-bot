@@ -12,7 +12,7 @@ import requests
 from loguru import logger
 
 from config.image_uploader import UTFSUploader
-from config.persona_utils import PersonaManager
+from config.persona_utils import persona_manager
 
 
 def create_prompt_for_persona(persona: Dict) -> str:
@@ -335,8 +335,7 @@ def main():
         logger.warning("No models found or error fetching models")
 
     # Initialize PersonaManager
-    persona_manager = PersonaManager()
-    personas = persona_manager.load_personas()
+    persona_manager.load_personas()
 
     # Create images directory (updated path)
     images_dir = Path(__file__).parent / "local_images"
@@ -344,7 +343,7 @@ def main():
 
     # Prepare tasks for personas that need images
     tasks = []
-    for key, persona in personas.items():
+    for key, persona in persona_manager.personas.items():
         if not persona.get("image"):
             prompt = create_prompt_for_persona(persona)
             image_path = images_dir / f"{key}.png"
@@ -366,15 +365,17 @@ def main():
                 if success:
                     # Update persona image path in the JSON (updated path)
                     key = next(
-                        k for k, v in personas.items() if v["name"] == persona_name
+                        k
+                        for k, v in persona_manager.personas.items()
+                        if v["name"] == persona_name
                     )
-                    personas[key]["image"] = f"local_images/{key}.png"
+                    persona_manager.personas[key]["image"] = f"local_images/{key}.png"
                     logger.info(f"✓ Successfully generated image for {persona_name}")
             except Exception as e:
                 logger.error(f"✗ Failed to generate image for {persona_name}: {str(e)}")
 
         # Save updated JSON
-        persona_manager.save_personas(personas)
+        persona_manager.save_personas()
 
     # After successful image generation, upload to UTFS
     uploader = UTFSUploader(api_key=utfs_api_key, app_id=app_id)
@@ -388,7 +389,11 @@ def main():
         try:
             success = result.get()
             if success:
-                key = next(k for k, v in personas.items() if v["name"] == persona_name)
+                key = next(
+                    k
+                    for k, v in persona_manager.personas.items()
+                    if v["name"] == persona_name
+                )
                 # Use absolute path instead of relative
                 local_image_path = images_dir / f"{key}.png"
 

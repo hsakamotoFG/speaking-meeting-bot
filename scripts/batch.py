@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Tuple
 import ngrok
 from dotenv import load_dotenv
 
-from config.personas import PERSONAS, get_persona
+from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 load_dotenv(override=True)
@@ -105,6 +105,8 @@ class BotProxyManager:
         self.listeners: List = []
         self.start_time = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.shutdown_event = asyncio.Event()
+        self.initial_args = None
+        self.selected_persona_names = []
 
     async def create_ngrok_tunnel(
         self, port: int, name: str
@@ -232,12 +234,14 @@ class BotProxyManager:
         )
         args = parser.parse_args()
 
+        self.initial_args = args
+
         meeting_url = args.meeting_url
         if not args.meeting_url:
-            logger.info("Prompting for meeting URL")
             meeting_url = get_user_input(
                 "Enter the meeting URL (must start with https://): ", validate_url
             )
+            self.initial_args.meeting_url = meeting_url
 
         if not os.getenv("NGROK_AUTHTOKEN"):
             logger.error("NGROK_AUTHTOKEN environment variable is not set")
@@ -248,25 +252,26 @@ class BotProxyManager:
         try:
             logger.info(f"Starting {args.count} bot-proxy pairs with ngrok tunnels...")
 
-            # Update persona selection logic
-            available_personas = list(PERSONAS.keys())
-            selected_persona_names = []
+            # Store persona selection logic results
+            available_personas = persona_manager.list_personas()
+            self.selected_persona_names = []
 
             if args.personas:
                 # Validate provided personas exist
                 for persona_name in args.personas:
-                    if persona_name not in PERSONAS:
+                    if persona_name not in available_personas:
                         raise ValueError(
                             f"Persona '{persona_name}' not found in available personas"
                         )
-                    selected_persona_names.append(persona_name)
+                    self.selected_persona_names.append(persona_name)
 
             # If we need more personas than provided, fill with random selections
-            if len(selected_persona_names) < args.count:
-                remaining_count = args.count - len(selected_persona_names)
-                # Remove already selected personas from available options
+            if len(self.selected_persona_names) < args.count:
+                remaining_count = args.count - len(self.selected_persona_names)
                 remaining_personas = [
-                    p for p in available_personas if p not in selected_persona_names
+                    p
+                    for p in available_personas
+                    if p not in self.selected_persona_names
                 ]
 
                 if remaining_count > len(remaining_personas):
@@ -276,7 +281,7 @@ class BotProxyManager:
 
                 random.seed(time.time())
                 random_selections = random.sample(remaining_personas, remaining_count)
-                selected_persona_names.extend(random_selections)
+                self.selected_persona_names.extend(random_selections)
 
             for i in range(args.count):
                 pair_num = i + 1
@@ -286,8 +291,8 @@ class BotProxyManager:
                 bot_name = f"bot_{pair_num}"
 
                 # Get persona object for this iteration
-                persona = get_persona(selected_persona_names[i])
-                persona_name = persona["name"]
+                persona_name = self.selected_persona_names[i]
+                persona = persona_manager.get_persona(persona_name)
                 bot_prompt = persona["prompt"]
                 logger.warning(f"**BOT NAME: {persona_name}**")
                 logger.warning(
@@ -390,6 +395,129 @@ class BotProxyManager:
         finally:
             await self.cleanup()
             logger.success("Cleanup completed successfully")
+
+        # Add keyboard input handling for adding new bots
+        while not self.shutdown_event.is_set():
+            user_input = await asyncio.get_event_loop().run_in_executor(
+                None,
+                input,
+                "Press Enter to add more bots with the same configuration, or Ctrl+C to exit: ",
+            )
+            if user_input.strip() == "":
+                current_count = len(self.processes) // 3
+                current_port = self.initial_args.start_port + (current_count * 2)
+
+                # If original launch didn't specify personas, select new random ones
+                if not self.initial_args.personas:
+                    available_personas = persona_manager.list_personas()
+                    # Exclude currently active personas to avoid duplicates
+                    active_personas = set(
+                        self.selected_persona_names[-self.initial_args.count :]
+                    )
+                    available_personas = [
+                        p for p in available_personas if p not in active_personas
+                    ]
+
+                    if len(available_personas) < self.initial_args.count:
+                        logger.warning(
+                            "Not enough unique personas left, reusing some personas"
+                        )
+                        available_personas = persona_manager.list_personas()
+
+                    new_personas = random.sample(
+                        available_personas, self.initial_args.count
+                    )
+                    self.selected_persona_names.extend(new_personas)
+
+                for i in range(self.initial_args.count):
+                    pair_num = current_count + i + 1
+                    bot_port = current_port
+                    proxy_port = current_port + 1
+
+                    # Get the newly selected persona for this iteration
+                    persona_name = self.selected_persona_names[
+                        -self.initial_args.count + i
+                    ]
+                    persona = persona_manager.get_persona(persona_name)
+                    bot_prompt = persona["prompt"]
+
+                    # Start bot
+                    bot_name = f"bot_{pair_num}"
+                    logger.warning(f"**BOT NAME: {persona_name}**")
+                    bot_process = self.run_command(
+                        [
+                            "poetry",
+                            "run",
+                            "bot",
+                            "-p",
+                            str(bot_port),
+                            "--system-prompt",
+                            bot_prompt,
+                            "--persona-name",
+                            persona_name,
+                            "--voice-id",
+                            "40104aff-a015-4da1-9912-af950fbec99e",
+                        ],
+                        bot_name,
+                    )
+
+                    if not bot_process:
+                        continue
+
+                    await asyncio.sleep(1)
+
+                    # Start proxy
+                    proxy_name = f"proxy_{pair_num}"
+                    proxy_process = self.run_command(
+                        [
+                            "poetry",
+                            "run",
+                            "proxy",
+                            "-p",
+                            str(proxy_port),
+                            "--websocket-url",
+                            f"ws://localhost:{bot_port}",
+                        ],
+                        proxy_name,
+                    )
+
+                    if not proxy_process:
+                        logger.error(
+                            f"Failed to start {proxy_name}, terminating {bot_name}"
+                        )
+                        self.processes[bot_name]["process"].terminate()
+                        continue
+
+                    # Create ngrok tunnel for the proxy
+                    listener = await self.create_ngrok_tunnel(
+                        proxy_port, f"tunnel_{pair_num}"
+                    )
+                    if listener:
+                        self.listeners.append(listener)
+                        meeting_name = f"meeting_{pair_num}"
+                        meeting_process = self.run_command(
+                            [
+                                "poetry",
+                                "run",
+                                "meetingbaas",
+                                "--meeting-url",
+                                self.initial_args.meeting_url,
+                                "--persona-name",
+                                persona_name,
+                                "--ngrok-url",
+                                listener.url(),
+                            ],
+                            meeting_name,
+                        )
+                        if not meeting_process:
+                            logger.error(f"Failed to start {meeting_name}")
+
+                    current_port += 2
+                    await asyncio.sleep(1)
+
+                logger.success(
+                    f"Successfully added {self.initial_args.count} new bot-proxy pairs"
+                )
 
     def main(self) -> None:
         """Main entry point with proper signal handling"""

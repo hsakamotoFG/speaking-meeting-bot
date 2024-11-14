@@ -9,7 +9,7 @@ import requests
 from dotenv import load_dotenv
 from loguru import logger
 
-from config.personas import get_persona_by_name
+from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 logger = configure_logger()
@@ -43,12 +43,12 @@ def get_user_input(prompt, validator=None):
 
 def get_persona_selection():
     """Prompts user to select a persona from available options"""
-    from config.personas import get_persona, list_personas
+    from config.persona_utils import persona_manager
 
-    available_personas = list_personas()
+    available_personas = persona_manager.list_personas()
     logger.info("\nAvailable personas:")
     for persona_key in available_personas:
-        persona = get_persona(persona_key)
+        persona = persona_manager.get_persona(persona_key)
         logger.info(f"{persona_key}: {persona['name']}")
 
     logger.info("\nPress Enter for random selection or type persona name:")
@@ -70,16 +70,16 @@ def get_persona_selection():
 
 
 def create_baas_bot(meeting_url, ngrok_url, persona_name=None):
-    from config.personas import get_persona
+    from config.persona_utils import persona_manager
 
     if not persona_name:
         persona_name = get_persona_selection()
 
     try:
-        persona = get_persona(persona_name)
+        persona = persona_manager.get_persona(persona_name)
     except KeyError:
         try:
-            persona = get_persona_by_name(persona_name)
+            persona = persona_manager.get_persona_by_name(persona_name)
         except KeyError:
             logger.error(f"Persona '{persona_name}' not found in available personas.")
             return None
@@ -202,11 +202,11 @@ class BotManager:
         self.delete_current_bot()
 
         if user_choice == "n":
-            logger.info("User requested new URLs")
+            logger.warning("User requested new URLs")
             self.args.meeting_url = None
             self.args.ngrok_url = None
         elif user_choice == "p":
-            logger.info("User requested new persona")
+            logger.warning("User requested new persona")
             self.args.persona_name = None
 
     def delete_current_bot(self):

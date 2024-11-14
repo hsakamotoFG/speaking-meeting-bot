@@ -11,7 +11,7 @@ from typing import Optional
 import requests
 from loguru import logger
 
-from config.persona_utils import PersonaManager
+from config.persona_utils import persona_manager
 
 
 class UTFSUploader:
@@ -19,7 +19,7 @@ class UTFSUploader:
         self.api_key = api_key
         self.app_id = app_id
         self.base_url = "https://api.uploadthing.com"  # Updated base URL
-        self.persona_manager = PersonaManager()
+        self.persona_manager = persona_manager
         self.uploaded_urls = self._load_existing_urls()
 
         # Configure logger levels
@@ -27,9 +27,8 @@ class UTFSUploader:
         logger.add(lambda msg: print(msg), level="INFO")
 
     def _load_existing_urls(self) -> dict:
-        """Load existing image URLs from personas.json"""
-        personas = self.persona_manager.load_personas()
-        return {key: persona.get("image") for key, persona in personas.items()}
+        """Load existing image URLs from personas"""
+        return self.persona_manager.get_image_urls()
 
     def _image_needs_upload(self, persona_key: str) -> bool:
         """Check if image needs to be uploaded"""
