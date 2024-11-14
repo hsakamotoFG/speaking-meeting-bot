@@ -403,7 +403,7 @@ def main():
                 # Upload to UTFS using the absolute path
                 file_url = uploader.upload_file(local_image_path)
                 if file_url:
-                    persona_manager.update_persona_image_url(key, file_url)
+                    persona_manager.update_persona_image(key, file_url)
                     logger.success(
                         f"✓ Successfully generated and uploaded image for {persona_name}"
                     )

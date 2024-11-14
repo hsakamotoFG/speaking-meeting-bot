@@ -22,6 +22,8 @@ pytz = "^2024.2"
 aiohttp = "^3.10.10"
 ngrok = "^1.4.0"
 loguru = "^0.7.2"
+replicate = "^0.22.0"  
+
 
 [tool.poetry.group.dev.dependencies]
 grpcio-tools = "<=1.67.1"

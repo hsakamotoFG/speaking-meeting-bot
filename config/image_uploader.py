@@ -30,11 +30,26 @@ class UTFSUploader:
         """Load existing image URLs from personas"""
         return self.persona_manager.get_image_urls()
 
+    def _is_valid_url(self, url: str) -> bool:
+        """Check if URL is valid and accessible"""
+        if not url or not url.startswith("http"):
+            return False
+
+        try:
+            response = requests.head(url, timeout=5)
+            return response.status_code == 200
+        except Exception:
+            return False
+
     def _image_needs_upload(self, persona_key: str) -> bool:
         """Check if image needs to be uploaded"""
         # Check if URL exists and is from uploadthing.com
         current_url = self.uploaded_urls.get(persona_key, "")
-        return not (current_url and "uploadthing.com" in current_url)
+        return not (
+            current_url
+            and "uploadthing.com" in current_url
+            and self._is_valid_url(current_url)
+        )
 
     def upload_file(
         self, file_path: Path, custom_id: Optional[str] = None
