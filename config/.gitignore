@@ -1,0 +1,37 @@
+# Image files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.svg
+*.webp
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.wmv
+*.flv
+*.mkv
+*.webm
+
+# Audio files
+*.mp3
+*.wav
+*.ogg
+*.m4a
+*.aac
+
+# Local image directories
+local_images/
+generated_images/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Generated JSON files
+personas.json
