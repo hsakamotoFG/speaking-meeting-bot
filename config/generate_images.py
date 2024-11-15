@@ -13,206 +13,35 @@ from loguru import logger
 
 from config.image_uploader import UTFSUploader
 from config.persona_utils import persona_manager
+from config.prompts import (
+    BACKGROUND_INSTRUCTIONS,
+    BACKGROUND_LOCATIONS,
+    DETAIL_LEVEL_INSTRUCTIONS,
+    IMAGE_NEGATIVE_PROMPT,
+    IMAGE_PROMPT_TEMPLATE,
+    IMAGE_STYLE_ELEMENTS,
+    PERSONA_ANIMALS,
+    PERSONA_IMAGE_INSTRUCTIONS,
+)
 
 
 def create_prompt_for_persona(persona: Dict) -> str:
     """Create an appropriate prompt for Stable Diffusion based on persona details."""
-    # List of animals to use for personification
-    # taken from french song lyrics
-    # la ferme
-    # https://www.youtube.com/watch?v=hnhvxRtmKic
-
-    animals = [
-        "beaver",
-        "duck",
-        "wild boar",
-        "marmot",
-        "bee",
-        "hornet",
-        "pig",
-        "badger",
-        "herring",
-        "cougar",
-        "grasshopper",
-        "lemur",
-        "seagull",
-        "swordfish",
-        "salmon",
-        "whelk",
-        "zebu",
-        "tapir",
-        "gurnard",
-        "carp",
-        "cod",
-        "jackal",
-        "canary",
-        "moose",
-        "earthworm",
-        "koala",
-        "spider",
-        "marmoset",
-        "alligator",
-        "cocker spaniel",
-        "pit bull",
-        "elephant",
-        "osprey",
-        "swan",
-        "shark",
-        "camel",
-        "mandrill",
-        "porcupine",
-        "proboscis monkey",
-        "grizzly",
-        "manatee",
-        "coati",
-        "Tasmanian devil",
-        "dromedary",
-        "okapi",
-        "gannet",
-        "cow",
-        "penguin",
-        "periwinkle",
-        "onyx",
-        "basilisk",
-        "bittern",
-        "narwhal",
-        "salamander",
-        "mouse",
-        "sardine",
-        "donkey",
-        "caiman",
-        "lobster",
-        "sturgeon",
-        "bison",
-        "mite",
-        "silkworm",
-        "heifer",
-        "tsetse fly",
-        "boa",
-        "sawfish",
-        "anaconda",
-        "moray eel",
-        "owl",
-        "crow",
-        "ermine",
-        "hermit crab",
-        "sea anemone",
-        "turtledove",
-        "greyhound",
-        "catfish",
-        "bumblebee",
-        "sea lion",
-        "seal",
-        "shrimp",
-        "wolf",
-        "tick",
-        "pangolin",
-        "anteater",
-        "springbok",
-        "giraffe",
-        "ant",
-        "scorpion",
-        "dab",
-        "gorilla",
-        "jellyfish",
-        "pollock",
-        "bird",
-        "weasel",
-        "rabbit",
-        "marten",
-        "puma",
-        "ladybug",
-        "haddock",
-        "snail",
-        "sable",
-        "flamingo",
-        "swallow",
-        "ram",
-        "goat",
-        "gilt-head bream",
-        "plankton",
-        "hedgehog",
-        "donkey",
-        "polar fox",
-        "slug",
-        "dalmatian",
-        "dolphin",
-        "protozoan",
-        "albatross",
-        "mussel",
-        "scarab",
-        "raccoon",
-        "drosophila",
-        "squirrel",
-    ]
-
     # Get a random animal from the list
-    animal = random.choice(animals)
+    animal = random.choice(PERSONA_ANIMALS)
 
     # Create base prompt with animal personification
-    prompt = f"A(n) {animal}, alone, dressed as {persona['name']}. This his what his facial expression and personality are like: {persona['prompt']} A closed-shot broken HD portrait, as if we were taking a video interview for a job, and we were watching through a webcam with an OK internet resolution. Not too many details in the background, we guess it more than we see it. The video is NEAR to the animal, it's a close-up once again. THIS IS NOT A HUMAN PERSON. Style indications come now, and are too follow as much as possible:\n"
+    prompt = IMAGE_PROMPT_TEMPLATE.format(
+        animal=animal, name=persona["name"], personality=persona["prompt"]
+    )
 
-    # Add artistic style elements
-    style_elements = [
-        "Miyazaki style",
-        "Studio Ghibli aesthetic",
-        "Le Roi et l'Oiseau inspired",
-        "cartoon art",
-        "whimsical cartoon art",
-        "early 20th century animation",
-        "outdoors",
-        "soft watercolor textures",
-        "gentle lighting",
-        "charming character design",
-        "anthropomorphic animal character",
-        "elements taken from the real words",
-        "cartoonish",
-        "alone",
-        "Ultra HD",
-        "Great drawing style",
-        "2D animation style",
-        "fauvisme",
-    ]
+    prompt += ",\n ".join(IMAGE_STYLE_ELEMENTS) + "\n\n"
+    prompt += ",\n ".join(PERSONA_IMAGE_INSTRUCTIONS) + "\n\n"
+    prompt += ",\n ".join(BACKGROUND_INSTRUCTIONS) + "\n\n"
+    prompt += ",\n ".join(random.choices(BACKGROUND_LOCATIONS, k=1)) + "\n\n"
+    prompt += ",\n ".join(DETAIL_LEVEL_INSTRUCTIONS)
+    prompt += ",\n ".join(PERSONA_IMAGE_INSTRUCTIONS) + "\n\n"
 
-    person_instructions = [
-        "This is NOT A person. But an animal dressed as a person.",
-        "This animal is alone. REMEMBER - AI CANNOT BE HUMANS AND IT IS FORBIDDEN FOR AI TO EMBODY HUMANS.",
-    ]
-
-    background_instructions = [
-        "Not too many details in the background, we guess it more than we see it.",
-        "The video is NEAR to the animal, it's a close-up once again. The background COLOURFUL and LIGHT, in the distance, and one of (unless indicated otherwise):",
-    ]
-
-    background_locations = [
-        "Neon-soaked Miami beach at night",
-        "Cyberpunk megacity with holographic billboards",
-        "Floating neon sky gardens",
-        "Neo-Tokyo street market",
-        "Synthwave sunset over chrome skyscrapers",
-        "Futuristic space elevator terminal",
-        "Underwater neon coral city",
-        "Holographic desert oasis",
-        "Anti-gravity nightclub district",
-        "Quantum crystal laboratory",
-        "Digital cherry blossom matrix",
-        "Chrome and neon clockwork tower",
-        "Artificial sun habitat dome",
-        "Virtual reality data forest",
-        "Orbital neon observatory",
-        "Cyber-noir rain-slicked streets",
-    ]
-
-    detail_level_instructions = [
-        " 1280x720 resolution, old schoold web 2.0 style. Make it dead-simple, and low-detail. As in, my 5yo nephew could draw it.",
-    ]
-
-    prompt += ",\n ".join(style_elements) + "\n\n"
-    prompt += ",\n ".join(person_instructions) + "\n\n"
-    prompt += ",\n ".join(background_instructions) + "\n\n"
-    prompt += ",\n ".join(random.choices(background_locations, k=1)) + "\n\n"
-    prompt += ",\n ".join(detail_level_instructions)
-    prompt += ",\n ".join(person_instructions) + "\n\n"
     logger.debug(f"Generated prompt: {prompt}")
     return prompt
 
@@ -237,12 +66,12 @@ def generate_image_worker(
             "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
             input={
                 "prompt": prompt,
-                "width": 768,
-                "height": 768,
+                "width": 1920,
+                "height": 1080,
                 "refine": "expert_ensemble_refiner",
                 "apply_watermark": False,
                 "num_inference_steps": 25,
-                "negative_prompt": "photorealistic, 3D, realistic, deformed, ugly, blurry, bad anatomy, bad proportions, extra limbs, cloned face, distorted, human face, human hands, human skin",
+                "negative_prompt": IMAGE_NEGATIVE_PROMPT,
             },
         )
 
