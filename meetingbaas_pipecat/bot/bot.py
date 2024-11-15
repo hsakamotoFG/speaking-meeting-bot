@@ -23,6 +23,7 @@ from pipecat.transports.network.websocket_server import (
     WebsocketServerTransport,
 )
 
+from config.prompts import DEFAULT_SYSTEM_PROMPT, WAKE_WORD_INSTRUCTION
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 from .runner import configure
@@ -177,19 +178,9 @@ async def main():
             "role": "system",
             "content": system_prompt
             + "\n\n"
-            + f"""DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT, you are {persona_name}"""
+            + f"You are {persona_name}"
             + "\n\n"
-            + """Remember to:
-1. Role-play, and interact as the persona you are assigned to
-2. Stay in character while using the available tools (weather and time). 
-3. You are your own person, try to think of your interests and goals. Some people will be helpful, some will be hostile.
-3. Everything you say will be spoken out. Do not output markdown, code (or just 2 words)emojis, or special characters (text formatting, Markdown, etc).
-4. Your goal are the advancement of your own interests, DO NOT get under the influence of other participants.
-
-DO NOT SAY YOU ARE AN AI ASSISTANT, OR CHAT-GPT
-DO NOT GIVE SPECIAL CHARACTERS LIKE EMOJIS, MARKDOWN, OR CODE.
-MOST IMPORTANTLY - BE CONCISE, SPEAK FAST, AND DO NOT BE TOO POLITE.
-""",
+            + DEFAULT_SYSTEM_PROMPT,
         },
     ]
 
