@@ -371,6 +371,10 @@ def build_image_prompt(
     # Get random skin tone unless persona specifies one
     skin_tone = persona.get("skin_tone", random.choice(SKIN_TONES))
 
+    # Get gender from persona, defaulting to random if not specified
+    gender = persona.get("gender", random.choice(["MALE", "FEMALE"]))
+    gender_desc = "male" if gender == "MALE" else "female"
+
     # Determine age and style based on persona type
     is_technical = any(
         word in persona["prompt"].lower()
@@ -385,9 +389,9 @@ def build_image_prompt(
     )
 
     age_style = (
-        "young and enthusiastic, with a friendly approachable demeanor"
+        f"young and enthusiastic {gender_desc} with a friendly approachable demeanor"
         if is_technical
-        else DEFAULT_PERSONA_AGE
+        else f"{gender_desc} {DEFAULT_PERSONA_AGE}"
     )
 
     # Select random studio style
