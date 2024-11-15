@@ -9,6 +9,9 @@ import requests
 from dotenv import load_dotenv
 from loguru import logger
 
+logger.remove()
+logger.add(sys.stderr, level="INFO")
+
 from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import configure_logger
 
@@ -43,8 +46,6 @@ def get_user_input(prompt, validator=None):
 
 def get_persona_selection():
     """Prompts user to select a persona from available options"""
-    from config.persona_utils import persona_manager
-
     available_personas = persona_manager.list_personas()
     logger.info("\nAvailable personas:")
     for persona_key in available_personas:
@@ -70,8 +71,6 @@ def get_persona_selection():
 
 
 def create_baas_bot(meeting_url, ngrok_url, persona_name=None):
-    from config.persona_utils import persona_manager
-
     if not persona_name:
         persona_name = get_persona_selection()
 
@@ -104,13 +103,15 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None):
         "streaming": {"input": ngrok_url, "output": ngrok_url},
     }
 
-    logger.info(f"Creating bot with persona: {persona['name']}")
-    logger.debug(f"Bot configuration: {config}")
+    logger.warning(
+        f"Creating meeting bot with persona: {persona['name']}, image: {persona['image']} and entry message: {persona['entry_message']}"
+    )
+    logger.debug(f"Full Meeting Baas Bot configuration: {config}")
 
-    logger.warning(f"**BOT NAME: {persona['name']}**")
-    logger.warning(f"**SYSTEM PROMPT in meetingbaas.py**")
-    logger.warning(f"System prompt: {persona['prompt']}")
-    logger.warning(f"**SYSTEM PROMPT END**")
+    # logger.warning(f"**BOT NAME: {persona['name']}**")
+    # logger.warning(f"**SYSTEM PROMPT in meetingbaas.py**")
+    # logger.warning(f"System prompt: {persona['prompt']}")
+    # logger.warning(f"**SYSTEM PROMPT END**")
 
     response = requests.post(url, json=config, headers=headers)
     if response.status_code == 200:
@@ -246,8 +247,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-# Example usage:
-# python meeting_baas_bot.py
-# or
-# python meeting_baas_bot.py --meeting-url https://example.com/meeting --ngrok-url https://example.ngrok.io
