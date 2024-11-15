@@ -1,3 +1,4 @@
+import os
 import random
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -134,12 +135,35 @@ class PersonaManager:
     def get_persona(self, name: Optional[str] = None) -> Dict:
         """Get a persona by name or return a random one"""
         if name:
-            if name not in self.personas:
-                raise KeyError(
-                    f"Persona '{name}' not found. Valid options: {', '.join(self.personas.keys())}"
-                )
-            persona = self.personas[name].copy()
-            logger.info(f"Using specified persona: {name}")
+            # Convert to folder name format
+            folder_name = name.lower().replace(" ", "_")
+
+            # First try exact folder match
+            if folder_name in self.personas:
+                persona = self.personas[folder_name].copy()
+                logger.info(f"Using specified persona folder: {folder_name}")
+            else:
+                # Try to find the closest match among folder names
+                words = set(name.lower().split())
+                closest_match = None
+                max_overlap = 0
+
+                for persona_key in self.personas.keys():
+                    persona_words = set(persona_key.split("_"))
+                    overlap = len(words & persona_words)
+                    if overlap > max_overlap:
+                        max_overlap = overlap
+                        closest_match = persona_key
+
+                if closest_match and max_overlap >= 1:  # At least 1 word matches
+                    persona = self.personas[closest_match].copy()
+                    logger.warning(
+                        f"Using closest matching persona folder: {closest_match} (from: {name})"
+                    )
+                else:
+                    raise KeyError(
+                        f"Persona '{name}' not found. Valid options: {', '.join(self.personas.keys())}"
+                    )
         else:
             persona = random.choice(list(self.personas.values())).copy()
             logger.info(f"Randomly selected persona: {persona['name']}")
@@ -149,6 +173,13 @@ class PersonaManager:
             persona["image"] = ""  # Empty string instead of default URL
 
         persona["prompt"] = persona["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
+        # Add the path to the persona's directory using the normalized name
+        persona_key = (
+            name.lower().replace(" ", "_")
+            if name
+            else persona["name"].lower().replace(" ", "_")
+        )
+        persona["path"] = os.path.join(self.personas_dir, persona_key)
         return persona
 
     def get_persona_by_name(self, name: str) -> Dict:

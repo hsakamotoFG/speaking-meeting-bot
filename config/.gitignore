@@ -35,3 +35,6 @@ generated_images/
 
 # Generated JSON files
 personas.json
+
+# Generated MD backups
+*.bak

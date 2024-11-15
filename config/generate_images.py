@@ -14,33 +14,20 @@ from loguru import logger
 from config.image_uploader import UTFSUploader
 from config.persona_utils import persona_manager
 from config.prompts import (
-    BACKGROUND_INSTRUCTIONS,
-    BACKGROUND_LOCATIONS,
-    DETAIL_LEVEL_INSTRUCTIONS,
     IMAGE_NEGATIVE_PROMPT,
-    IMAGE_PROMPT_TEMPLATE,
-    IMAGE_STYLE_ELEMENTS,
+    IS_ANIMAL,
     PERSONA_ANIMALS,
-    PERSONA_IMAGE_INSTRUCTIONS,
+    build_image_prompt,
 )
 
 
 def create_prompt_for_persona(persona: Dict) -> str:
     """Create an appropriate prompt for Stable Diffusion based on persona details."""
-    # Get a random animal from the list
-    animal = random.choice(PERSONA_ANIMALS)
+    # Get a random animal from the list if IS_ANIMAL is True
+    animal = random.choice(PERSONA_ANIMALS) if IS_ANIMAL else None
 
-    # Create base prompt with animal personification
-    prompt = IMAGE_PROMPT_TEMPLATE.format(
-        animal=animal, name=persona["name"], personality=persona["prompt"]
-    )
-
-    prompt += ",\n ".join(IMAGE_STYLE_ELEMENTS) + "\n\n"
-    prompt += ",\n ".join(PERSONA_IMAGE_INSTRUCTIONS) + "\n\n"
-    prompt += ",\n ".join(BACKGROUND_INSTRUCTIONS) + "\n\n"
-    prompt += ",\n ".join(random.choices(BACKGROUND_LOCATIONS, k=1)) + "\n\n"
-    prompt += ",\n ".join(DETAIL_LEVEL_INSTRUCTIONS)
-    prompt += ",\n ".join(PERSONA_IMAGE_INSTRUCTIONS) + "\n\n"
+    # Generate the complete prompt using the builder
+    prompt = build_image_prompt(persona, animal)
 
     logger.debug(f"Generated prompt: {prompt}")
     return prompt
@@ -72,6 +59,8 @@ def generate_image_worker(
                 "apply_watermark": False,
                 "num_inference_steps": 25,
                 "negative_prompt": IMAGE_NEGATIVE_PROMPT,
+                "scheduler": "DPMSolverMultistep",
+                "guidance_scale": 7.5,
             },
         )
 

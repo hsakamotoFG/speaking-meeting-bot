@@ -1,3 +1,6 @@
+import random
+from typing import Dict
+
 """Collection of system prompts and default values used throughout the application"""
 
 ##### MEETING BEHAVIOR #####
@@ -5,9 +8,7 @@
 # Core interaction instructions added to all personas
 PERSONA_INTERACTION_INSTRUCTIONS = """
 Remember:
-1. Start by clearly stating who you are
-2. When someone new speaks, ask them who they are
-3. Then consider and express how their role/expertise could help you
+1. Start by clearly stating who you are and based on other information, speak in character. If someone already asked a question, answer it.
 """
 
 # Default wake word response
@@ -36,6 +37,10 @@ DEFAULT_CHARACTERISTICS = [
 
 # Default voice characteristics
 DEFAULT_VOICE_CHARACTERISTICS = ["modern internet slang", "expertise in their field"]
+
+# Add default persona characteristics
+DEFAULT_PERSONA_AGE = "young adult"
+DEFAULT_PERSONA_STYLE = "energetic and approachable"
 
 ##### SYSTEM PROMPTS #####
 
@@ -68,51 +73,143 @@ You are a helpful and engaging participant in this meeting. Your goal is to cont
 
 ##### IMAGE GENERATION PROMPTS #####
 
+# Global flag for animal-based personas
+IS_ANIMAL = False
+
+# Core framing instruction - make it absolutely clear
+FRAMING_INSTRUCTION = """
+CRITICAL: HEAD SHOT WITH LOTS OF PADDING:
+- FULL HEAD MUST BE VISIBLE WITH LOTS OF SPACE AROUND IT
+- Add 30% padding on ALL sides of the head
+- Include MINIMAL shoulders (just a hint)
+- NO ACCESSORIES (no glasses, no jewelry, no hats)
+- SIMPLE CHARACTER, RICH BACKGROUND
+"""
+
+SUBJECT_COUNT_INSTRUCTION = """
+ABSOLUTELY CRITICAL: EXACTLY ONE CHARACTER HEAD IN THE SCENE.
+NO OTHER PEOPLE OR CHARACTERS ANYWHERE - NOT EVEN IN THE BACKGROUND.
+HEAD AND SHOULDERS ONLY.
+"""
+
+# Add skin tone variations
+SKIN_TONES = [
+    "Black",
+    "East Asian",
+    "South Asian",
+    "Middle Eastern",
+    "Latino/Hispanic",
+    "Pacific Islander",
+    "White",
+    "Mixed race",
+    "Southeast Asian",
+    "African",
+    "Caribbean",
+    "Indigenous/Native American",
+]
+
+# Update IMAGE_PROMPT_TEMPLATE to include eye direction and multiple studio styles
 IMAGE_PROMPT_TEMPLATE = (
-    "A professional shot of a (name/function): {name}. This his what his facial expression "
-    "and personality are like: {personality} A closed-shot broken HD portrait, as if "
-    "we were taking a video interview for a job, and we were watching through a webcam "
-    "with an OK internet resolution. Not too many details in the background, we guess "
-    "it more than we see it. The video is NEAR to the subject, it's a close-up once "
-    "again.  Style indications come now, and are too follow "
-    "as much as possible:\n"
+    (
+        "A simple head shot of a {animal} character in {studio_style} as {name}. "
+        "The ENTIRE HEAD must be visible with LOTS OF PADDING around it. "
+        "Their expression conveys: {personality}. "
+        "Eyes looking DIRECTLY at the camera. "
+        "NO ACCESSORIES, NO DETAILS - just clean character design. "
+        "Professional lighting with {studio_lighting}.{animal_warning} "
+        "They are centered against a rich, vibrant {background}. "
+        "The image should follow these style guidelines:\n"
+    )
+    if IS_ANIMAL
+    else (
+        "A simple head shot of a {skin_tone} human person as a {studio_style} character as {name}. "
+        "Make them {age_style}. The ENTIRE HEAD must be visible with LOTS OF PADDING around it. "
+        "Their expression conveys: {personality}. "
+        "Eyes looking DIRECTLY at the camera. "
+        "NO ACCESSORIES, NO DETAILS - just clean {studio_style} character design. "
+        "Professional lighting with {studio_lighting}. "
+        "They are centered against a rich, vibrant {background}. "
+        "The image should follow these style guidelines:\n"
+    )
 )
 
-# Style elements for image generation
+# Add studio styles and their characteristics
+ANIMATION_STUDIOS = {
+    "Pixar": {
+        "style": "Pixar-style with rounded features and expressive eyes",
+        "lighting": "Pixar's signature warm lighting",
+    },
+    "DreamWorks": {
+        "style": "DreamWorks-style with slightly exaggerated features and dynamic expressions",
+        "lighting": "DreamWorks' dramatic lighting contrasts",
+    },
+    "Industrial Light & Magic": {
+        "style": "ILM-style with realistic proportions and detailed texturing",
+        "lighting": "ILM's cinematic lighting",
+    },
+    "Reel FX": {
+        "style": "Reel FX-style with stylized features and modern appeal",
+        "lighting": "Reel FX's vibrant lighting palette",
+    },
+}
+
+# Update IMAGE_STYLE_ELEMENTS to emphasize simplicity
 IMAGE_STYLE_ELEMENTS = [
-    "Miyazaki style",
-    "Studio Ghibli aesthetic",
-    "Le Roi et l'Oiseau inspired",
-    "cartoon art",
-    "whimsical cartoon art",
-    "early 20th century animation",
-    "outdoors",
-    "soft watercolor textures",
-    "gentle lighting",
-    "charming character design",
-    "anthropomorphic animal character",
-    "elements taken from the real words",
-    "cartoonish",
-    "alone",
-    "Ultra HD",
-    "Great drawing style",
-    "2D animation style",
-    "fauvisme",
+    "Pixar-style human character design",
+    "modern 3D animation quality",
+    "30% padding around head",
+    "complete head always visible",
+    "basic facial features only",
+    "no accessories or details",
+    "soft lighting on face",
+    "clean character modeling",
+    "rich background detail",
+    "centered composition",
+    "human facial proportions",
+    "Pixar-style expressiveness",
 ]
 
-# Instructions for persona representation
+# Update negative prompt to prevent accessories and cropping
+IMAGE_NEGATIVE_PROMPT = (
+    "photorealistic, live action, real person, photograph, realistic textures, "
+    "multiple characters, crowd, group, background characters, "
+    "deformed, ugly, blurry, bad anatomy, bad proportions, "
+    "anime style, 2D animation, hand-drawn, sketch, "
+    "hands, arms, body, torso, legs, fingers, "
+    "cropped head, partial head, cut off features, tight framing, "
+    "glasses, jewelry, hats, accessories, detailed clothing, "  # Added these
+    "complex details, busy design, cluttered, "  # Added these
+    "two people, three people, multiple faces, multiple heads"
+    + (", human skin texture, realistic fur, realistic animal" if IS_ANIMAL else "")
+)
+
+# Update persona image instructions
 PERSONA_IMAGE_INSTRUCTIONS = [
-    "This is NOT A person. But an animal dressed as a person.",
-    "This animal is alone. REMEMBER - AI CANNOT BE HUMANS AND IT IS FORBIDDEN FOR AI TO EMBODY HUMANS.",
-]
+    "Simple Pixar-style human head shot",
+    "ENTIRE HEAD MUST BE VISIBLE WITH LOTS OF PADDING",
+    "NO ACCESSORIES OR COMPLEX DETAILS",
+    "Clean, minimal human character design",
+    "Rich, detailed background",
+    "Must be clearly a Pixar-style human person",
+    SUBJECT_COUNT_INSTRUCTION,
+    FRAMING_INSTRUCTION,
+    "HEAD AND SHOULDERS ONLY - NO BODY PARTS VISIBLE",
+] + (
+    [
+        "This is a Pixar-style animated animal character head shot.",
+        "Stylized animal design in modern 3D animation style.",
+    ]
+    if IS_ANIMAL
+    else []
+)
 
-# Background instructions
+# Update background instructions to be more funky/cool
 BACKGROUND_INSTRUCTIONS = [
     "Not too many details in the background, we guess it more than we see it.",
-    "The video is NEAR to the animal, it's a close-up once again. The background COLOURFUL and LIGHT, in the distance, and one of (unless indicated otherwise):",
+    "The background should be COLOURFUL and LIGHT, in the distance, and one of (unless indicated otherwise):",
 ]
 
-# Background location options
+# Update background locations to be more vibrant
 BACKGROUND_LOCATIONS = [
     "Neon-soaked Miami beach at night",
     "Cyberpunk megacity with holographic billboards",
@@ -126,27 +223,8 @@ BACKGROUND_LOCATIONS = [
     "Quantum crystal laboratory",
     "Digital cherry blossom matrix",
     "Chrome and neon clockwork tower",
-    "Artificial sun habitat dome",
-    "Virtual reality data forest",
-    "Orbital neon observatory",
-    "Cyber-noir rain-slicked streets",
 ]
 
-# Detail level instructions
-DETAIL_LEVEL_INSTRUCTIONS = [
-    "1280x720 resolution, old schoold web 2.0 style. Make it dead-simple, and low-detail. As in, my 5yo nephew could draw it.",
-]
-
-IMAGE_NEGATIVE_PROMPT = (
-    "photorealistic, 3D, realistic, deformed, ugly, blurry, bad anatomy, "
-    "bad proportions, extra limbs, cloned face, distorted, human face, "
-    "human hands, human skin"
-)
-
-# List of animals for persona personification
-# taken from french song lyrics
-# la ferme
-# https://www.youtube.com/watch?v=hnhvxRtmKic
 PERSONA_ANIMALS = [
     "beaver",
     "duck",
@@ -270,3 +348,102 @@ PERSONA_ANIMALS = [
     "drosophila",
     "squirrel",
 ]
+
+# Detail level instructions
+DETAIL_LEVEL_INSTRUCTIONS = [
+    "Pixar-quality 3D rendering",
+    "modern animation studio quality",
+    "clean and polished 3D modeling",
+]
+
+# Section headers for prompt building
+STYLE_AND_QUALITY_HEADER = "Style and Quality:"
+BACKGROUND_HEADER = "Background Instructions:"
+DETAIL_LEVEL_HEADER = "Detail Level:"
+ADDITIONAL_INSTRUCTIONS_HEADER = "Additional Instructions:"
+
+
+def build_image_prompt(
+    persona: Dict, animal: str = None, background: str = None
+) -> str:
+    """Builds a complete image generation prompt using all defined constants."""
+
+    # Get random skin tone unless persona specifies one
+    skin_tone = persona.get("skin_tone", random.choice(SKIN_TONES))
+
+    # Determine age and style based on persona type
+    is_technical = any(
+        word in persona["prompt"].lower()
+        for word in [
+            "technical",
+            "engineer",
+            "developer",
+            "scientist",
+            "researcher",
+            "expert",
+        ]
+    )
+
+    age_style = (
+        "young and enthusiastic, with a friendly approachable demeanor"
+        if is_technical
+        else DEFAULT_PERSONA_AGE
+    )
+
+    # Select random studio style
+    selected_studio = random.choice(list(ANIMATION_STUDIOS.keys()))
+    studio_info = ANIMATION_STUDIOS[selected_studio]
+
+    # Create format parameters
+    format_params = {
+        "name": persona["name"],
+        "personality": persona["prompt"],
+        "animal": animal if IS_ANIMAL else "",
+        "animal_warning": " THIS IS NOT A HUMAN PERSON." if IS_ANIMAL else "",
+        "background": background or random.choice(BACKGROUND_LOCATIONS),
+        "skin_tone": skin_tone,
+        "age_style": age_style,
+        "studio_style": studio_info["style"],
+        "studio_lighting": studio_info["lighting"],
+    }
+
+    # Build the complete prompt
+    sections = []
+
+    # Base template
+    sections.append(IMAGE_PROMPT_TEMPLATE.format(**format_params))
+
+    # Style and Quality
+    sections.append(STYLE_AND_QUALITY_HEADER)
+    sections.append(", ".join(IMAGE_STYLE_ELEMENTS))
+
+    # Background
+    sections.append(BACKGROUND_HEADER)
+    sections.append("\n".join(BACKGROUND_INSTRUCTIONS))
+    sections.append(f"Location: {format_params['background']}")
+
+    # Detail Level
+    sections.append(DETAIL_LEVEL_HEADER)
+    sections.append(", ".join(DETAIL_LEVEL_INSTRUCTIONS))
+
+    # Persona Image Instructions
+    sections.append(ADDITIONAL_INSTRUCTIONS_HEADER)
+    sections.append("\n".join(PERSONA_IMAGE_INSTRUCTIONS))
+
+    # Add subject count instruction prominently at the start
+    sections.insert(
+        1,
+        f"\nTHERE MUST BE EXACTLY ONE "
+        + ("ANIMAL" if IS_ANIMAL else "PERSON")
+        + " IN THE IMAGE, NO MORE NO LESS.\n",
+    )
+
+    # Add it again at the end for emphasis
+    sections.append("\nFINAL REMINDER:")
+    sections.append(
+        "THERE MUST BE EXACTLY ONE "
+        + ("ANIMAL" if IS_ANIMAL else "PERSON")
+        + " IN THE IMAGE, NO MORE NO LESS."
+    )
+
+    return "\n\n".join(sections)
