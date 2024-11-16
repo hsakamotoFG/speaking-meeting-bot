@@ -18,12 +18,6 @@ async def configure(
         "-p", "--port", type=int, default=8766, help="Port to run the server on"
     )
     parser.add_argument(
-        "--voice-id",
-        type=str,
-        required=False,
-        help="Cartesia voice ID for text-to-speech conversion",
-    )
-    parser.add_argument(
         "--persona-name",
         type=str,
         required=False,
@@ -42,12 +36,15 @@ async def configure(
     if not system_prompt:
         raise Exception("No system prompt provided")
 
-    voice_id = args.voice_id or os.getenv("CARTESIA_VOICE_ID")
-
+    # Get voice ID from persona data
+    voice_id = persona.get("cartesia_voice_id")
     if not voice_id:
-        raise Exception(
-            "No Cartesia voice ID. use the -v/--voice-id option from the command line, or set CARTESIA_API_KEY in your environment to specify a Cartesia voice ID."
-        )
+        # Fallback to environment variable only if not in persona
+        voice_id = os.getenv("CARTESIA_VOICE_ID")
+        if not voice_id:
+            raise Exception(
+                "No Cartesia voice ID found in persona config or environment variables"
+            )
 
     logger.warning(
         f"returning {args.host, args.port, system_prompt, voice_id, persona['name'], args}"
