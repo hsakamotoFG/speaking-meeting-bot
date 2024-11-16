@@ -127,40 +127,40 @@ class UTFSUploader:
                 if upload_response.status_code != 204:
                     raise Exception(f"Upload failed: {upload_response.text}")
 
-            # Update personas.json with the new URL
-            json_path = file_path.parent.parent / "personas.json"
-            if json_path.exists():
-                try:
-                    with open(json_path, "r", encoding="utf-8") as f:
-                        personas = json.load(f)
+            # Update personas.json with the new URL while preserving other fields
+            try:
+                base_filename = file_path.stem
+                logger.debug(f"Looking for persona with key: {base_filename}")
 
-                    # Get base filename without extension
-                    base_filename = (
-                        file_path.stem
-                    )  # This gets filename without extension
-                    logger.debug(f"Looking for persona with key: {base_filename}")
+                if base_filename in self.persona_manager.personas:
+                    # Get the complete current persona data
+                    current_persona = self.persona_manager.personas[base_filename]
 
-                    # Check if persona exists directly by key
-                    if base_filename in personas:
-                        personas[base_filename]["image"] = file_data["fileUrl"]
-                        logger.info(f"Updating image URL for {base_filename}")
+                    # Only update the image URL, preserving all other fields
+                    updated_persona = {
+                        **current_persona,  # Preserve all existing fields
+                        "image": file_data["fileUrl"],  # Update only the image URL
+                    }
 
-                        # Save updated JSON
-                        with open(json_path, "w", encoding="utf-8") as f:
-                            json.dump(personas, f, indent=2, ensure_ascii=False)
+                    # Save using PersonaManager
+                    success = self.persona_manager.save_persona(
+                        base_filename, updated_persona
+                    )
+                    if success:
                         logger.success(
-                            f"Updated personas.json with new image URL for {base_filename}"
+                            f"Updated image URL for {base_filename} while preserving all metadata"
                         )
                     else:
-                        logger.warning(
-                            f"Could not find persona for key {base_filename}"
-                        )
-                        logger.debug(
-                            "Available personas: " + ", ".join(personas.keys())
-                        )
+                        logger.error(f"Failed to save persona data for {base_filename}")
+                else:
+                    logger.warning(f"Could not find persona for key {base_filename}")
+                    logger.debug(
+                        "Available personas: "
+                        + ", ".join(self.persona_manager.personas.keys())
+                    )
 
-                except Exception as e:
-                    logger.error(f"Error updating personas.json: {str(e)}")
+            except Exception as e:
+                logger.error(f"Error updating persona: {str(e)}")
 
             return file_data["fileUrl"]
 

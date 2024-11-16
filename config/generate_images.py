@@ -9,6 +9,7 @@ from typing import Dict
 
 import replicate
 import requests
+from dotenv import load_dotenv
 from loguru import logger
 
 from config.image_uploader import UTFSUploader
@@ -19,6 +20,14 @@ from config.prompts import (
     PERSONA_ANIMALS,
     build_image_prompt,
 )
+
+# Load environment variables
+load_dotenv()
+
+# Get environment variables with fallbacks
+REPLICATE_KEY = os.getenv("REPLICATE_KEY")
+UTFS_KEY = os.getenv("UTFS_KEY")
+APP_ID = os.getenv("APP_ID")
 
 
 def create_prompt_for_persona(persona: Dict) -> str:
@@ -107,29 +116,35 @@ def get_available_models(api_key: str) -> list:
 
 
 def main():
-    if len(sys.argv) != 7:
-        logger.error("Missing arguments")
-        print(
-            "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
-        )
-        sys.exit(1)
+    # Check for command line arguments only if environment variables are not set
+    if not all([REPLICATE_KEY, UTFS_KEY, APP_ID]):
+        if len(sys.argv) != 7:
+            logger.error("Missing arguments and environment variables not set")
+            print(
+                "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+            )
+            sys.exit(1)
 
-    if (
-        sys.argv[1] != "--replicate-key"
-        or sys.argv[3] != "--utfs-key"
-        or sys.argv[5] != "--app-id"
-    ):
-        logger.error(
-            "Arguments must be --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
-        )
-        print(
-            "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
-        )
-        sys.exit(1)
+        if (
+            sys.argv[1] != "--replicate-key"
+            or sys.argv[3] != "--utfs-key"
+            or sys.argv[5] != "--app-id"
+        ):
+            logger.error(
+                "Arguments must be --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+            )
+            print(
+                "Usage: python generate_images.py --replicate-key <replicate_key> --utfs-key <utfs_key> --app-id <app_id>"
+            )
+            sys.exit(1)
 
-    replicate_api_key = sys.argv[2]  # This is the r8_* key for replicate
-    utfs_api_key = sys.argv[4]  # The UTFS key
-    app_id = sys.argv[6]
+        replicate_api_key = sys.argv[2]  # This is the r8_* key for replicate
+        utfs_api_key = sys.argv[4]  # The UTFS key
+        app_id = sys.argv[6]
+    else:
+        replicate_api_key = REPLICATE_KEY
+        utfs_api_key = UTFS_KEY
+        app_id = APP_ID
 
     # Remove 'sk_live_' prefix if present from replicate key
     replicate_api_key = replicate_api_key.replace("sk_live_", "")
@@ -212,19 +227,30 @@ def main():
                     for k, v in persona_manager.personas.items()
                     if v["name"] == persona_name
                 )
-                # Use absolute path instead of relative
+
+                # Get the complete current persona data
+                current_persona = persona_manager.personas[key]
+
+                # Upload to UTFS
                 local_image_path = images_dir / f"{key}.png"
-
-                # Update local image path
-                persona_manager.update_persona_image(key, str(local_image_path))
-
-                # Upload to UTFS using the absolute path
                 file_url = uploader.upload_file(local_image_path)
+
                 if file_url:
-                    persona_manager.update_persona_image(key, file_url)
-                    logger.success(
-                        f"✓ Successfully generated and uploaded image for {persona_name}"
-                    )
+                    # Update only the image URL while preserving all other fields
+                    updated_persona = {
+                        **current_persona,  # Preserve all existing fields
+                        "image": file_url,  # Update only the image URL
+                    }
+
+                    # Save the updated persona
+                    if persona_manager.save_persona(key, updated_persona):
+                        logger.success(
+                            f"✓ Successfully generated and uploaded image for {persona_name}"
+                        )
+                    else:
+                        logger.error(
+                            f"Failed to save updated persona data for {persona_name}"
+                        )
         except Exception as e:
             logger.error(f"✗ Failed to process image for {persona_name}: {str(e)}")
 

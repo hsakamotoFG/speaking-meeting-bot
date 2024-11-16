@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 import os
 import random
 import subprocess
@@ -21,6 +22,7 @@ from config.prompts import (
 from config.prompts import (
     DEFAULT_VOICE_CHARACTERISTICS as PROMPTS_VOICE_CHARACTERISTICS,
 )
+from config.voice_utils import VoiceUtils, get_language_input
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 # Load environment variables
@@ -89,7 +91,7 @@ def generate_persona_image(
         raise
 
 
-def create_persona_cli():
+async def create_persona_cli():
     parser = argparse.ArgumentParser(
         description="""Interactive persona creation tool for the meeting bot.
         
@@ -250,6 +252,10 @@ If not provided via command line, you will be prompted to enter it.""",
                     break
                 relevant_links.append(link)
 
+            # Language selection
+            language_code = get_language_input()
+            persona_data["language"] = language_code
+
             persona_data = create_persona_structure(
                 args.key,
                 name=name,
@@ -283,6 +289,17 @@ If not provided via command line, you will be prompted to enter it.""",
         else:
             logger.warning("Missing API keys - skipping image generation")
 
+        # If we have API keys, try to match a voice
+        if REPLICATE_KEY and UTFS_KEY and APP_ID:
+            voice_utils = VoiceUtils()
+            voice_id = await voice_utils.match_voice_to_persona(args.key, language_code)
+            if voice_id:
+                persona_data["cartesia_voice_id"] = voice_id
+                # Save the updated persona with the voice ID
+                success = persona_manager.save_persona(args.key, persona_data)
+                if not success:
+                    logger.error("Failed to save persona with voice ID")
+
         return 0
 
     except Exception as e:
@@ -291,4 +308,4 @@ If not provided via command line, you will be prompted to enter it.""",
 
 
 if __name__ == "__main__":
-    exit(create_persona_cli())
+    exit(asyncio.run(create_persona_cli()))

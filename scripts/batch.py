@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from contextlib import suppress
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
@@ -16,7 +17,7 @@ from typing import Dict, List, Optional, Tuple
 import ngrok
 from dotenv import load_dotenv
 
-from config.persona_utils import persona_manager
+from config.persona_utils import PersonaManager
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 load_dotenv(override=True)
@@ -47,9 +48,12 @@ def get_consecutive_personas(persona_options):
     if len(persona_options) < 2:
         raise ValueError("Need at least two personas to pick consecutive items.")
 
+    # Ensure we're working with folder names
+    folder_names = [name.lower().replace(" ", "_") for name in persona_options]
+
     # Choose a random start index that allows for two consecutive items
-    start_index = random.randint(0, len(persona_options) - 2)
-    return persona_options[start_index : start_index + 2]
+    start_index = random.randint(0, len(folder_names) - 2)
+    return folder_names[start_index : start_index + 2]
 
 
 class ProcessLogger:
@@ -159,6 +163,9 @@ class BotProxyManager:
             return process
         except Exception as e:
             logger.error(f"Failed to start {name}: {e}")
+            logger.error(
+                "".join(traceback.format_exception(type(e), e, e.__traceback__))
+            )
             return None
 
     async def cleanup(self):
@@ -253,7 +260,7 @@ class BotProxyManager:
             logger.info(f"Starting {args.count} bot-proxy pairs with ngrok tunnels...")
 
             # Store persona selection logic results
-            available_personas = persona_manager.list_personas()
+            available_personas = PersonaManager().list_personas()
             self.selected_persona_names = []
 
             if args.personas:
@@ -292,7 +299,7 @@ class BotProxyManager:
 
                 # Get persona object for this iteration
                 persona_name = self.selected_persona_names[i]
-                persona = persona_manager.get_persona(persona_name)
+                persona = PersonaManager().get_persona(persona_name)
                 bot_prompt = persona["prompt"]
                 logger.warning(f"**BOT NAME: {persona_name}**")
                 logger.warning(
@@ -409,7 +416,7 @@ class BotProxyManager:
 
                 # If original launch didn't specify personas, select new random ones
                 if not self.initial_args.personas:
-                    available_personas = persona_manager.list_personas()
+                    available_personas = PersonaManager().list_personas()
                     # Exclude currently active personas to avoid duplicates
                     active_personas = set(
                         self.selected_persona_names[-self.initial_args.count :]
@@ -422,7 +429,7 @@ class BotProxyManager:
                         logger.warning(
                             "Not enough unique personas left, reusing some personas"
                         )
-                        available_personas = persona_manager.list_personas()
+                        available_personas = PersonaManager().list_personas()
 
                     new_personas = random.sample(
                         available_personas, self.initial_args.count
@@ -438,12 +445,12 @@ class BotProxyManager:
                     persona_name = self.selected_persona_names[
                         -self.initial_args.count + i
                     ]
-                    persona = persona_manager.get_persona(persona_name)
+                    persona = PersonaManager().get_persona(persona_name)
                     bot_prompt = persona["prompt"]
 
                     # Start bot
                     bot_name = f"bot_{pair_num}"
-                    logger.warning(f"**BOT NAME: {persona_name}**")
+                    logger.warning(f"**STARTING BOT {bot_name} ON PORT {bot_port}**")
                     bot_process = self.run_command(
                         [
                             "poetry",
@@ -468,6 +475,10 @@ class BotProxyManager:
 
                     # Start proxy
                     proxy_name = f"proxy_{pair_num}"
+                    proxy_port = bot_port + 1
+                    logger.warning(
+                        f"**STARTING PROXY {proxy_name} ON PORT {proxy_port} CONNECTING TO BOT PORT {bot_port}**"
+                    )
                     proxy_process = self.run_command(
                         [
                             "poetry",

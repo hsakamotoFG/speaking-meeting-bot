@@ -1,9 +1,13 @@
+import asyncio
 import os
 import random
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
+import aiohttp
 import markdown
+from dotenv import load_dotenv
 from loguru import logger
 
 from config.prompts import (
@@ -12,6 +16,9 @@ from config.prompts import (
     DEFAULT_VOICE_CHARACTERISTICS,
     PERSONA_INTERACTION_INSTRUCTIONS,
 )
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class PersonaManager:
@@ -37,7 +44,13 @@ class PersonaManager:
         prompt = sections[0].split("\n\n", 1)[1].strip()
 
         # Parse metadata section
-        metadata = {"image": "", "entry_message": ""}  # Default values
+        metadata = {
+            "image": "",
+            "entry_message": "",
+            "cartesia_voice_id": "",
+            "gender": "",
+            "relevant_links": [],
+        }  # Default values
         for section in sections:
             if section.startswith("Metadata"):
                 for line in section.split("\n"):
@@ -46,9 +59,14 @@ class PersonaManager:
                             key_value = line[2:].split(": ", 1)
                             if len(key_value) == 2:
                                 key, value = key_value
-                                metadata[key] = value.strip()
+                                if key == "relevant_links":
+                                    # Split by spaces instead of commas for URLs
+                                    metadata[key] = [
+                                        url for url in value.strip().split() if url
+                                    ]
+                                else:
+                                    metadata[key] = value.strip()
                         except ValueError:
-                            # Skip malformed lines
                             continue
                 break
 
@@ -57,6 +75,9 @@ class PersonaManager:
             "prompt": prompt,
             "image": metadata.get("image", ""),
             "entry_message": metadata.get("entry_message", ""),
+            "cartesia_voice_id": metadata.get("cartesia_voice_id", ""),
+            "gender": metadata.get("gender", ""),
+            "relevant_links": metadata.get("relevant_links", []),
         }
 
     def load_personas(self) -> Dict:
@@ -89,7 +110,45 @@ class PersonaManager:
             persona_dir = self.personas_dir / key
             persona_dir.mkdir(exist_ok=True)
 
-            # Format characteristics and voice characteristics from prompts
+            # Read existing README if it exists to preserve metadata
+            readme_file = persona_dir / "README.md"
+            existing_metadata = {}
+            if readme_file.exists():
+                with open(readme_file, "r", encoding="utf-8") as f:
+                    existing_persona = self.parse_readme(f.read())
+                    # Preserve all existing metadata fields
+                    existing_metadata = {
+                        "image": existing_persona.get("image", ""),
+                        "entry_message": existing_persona.get(
+                            "entry_message", DEFAULT_ENTRY_MESSAGE
+                        ),
+                        "cartesia_voice_id": existing_persona.get(
+                            "cartesia_voice_id", ""
+                        ),
+                        "gender": existing_persona.get("gender", ""),
+                        "relevant_links": existing_persona.get("relevant_links", []),
+                    }
+
+            # Merge existing metadata with new data, preferring new data when available
+            metadata = {
+                "image": persona.get("image", existing_metadata.get("image", "")),
+                "entry_message": persona.get(
+                    "entry_message",
+                    existing_metadata.get("entry_message", DEFAULT_ENTRY_MESSAGE),
+                ),
+                "cartesia_voice_id": persona.get(
+                    "cartesia_voice_id", existing_metadata.get("cartesia_voice_id", "")
+                ),
+                "gender": persona.get(
+                    "gender",
+                    existing_metadata.get("gender", random.choice(["MALE", "FEMALE"])),
+                ),
+                "relevant_links": persona.get(
+                    "relevant_links", existing_metadata.get("relevant_links", [])
+                ),
+            }
+
+            # Format characteristics and voice characteristics
             characteristics = "\n".join(f"- {char}" for char in DEFAULT_CHARACTERISTICS)
             voice_chars = "\n".join(
                 f"- {char}" for char in DEFAULT_VOICE_CHARACTERISTICS
@@ -107,11 +166,14 @@ class PersonaManager:
 {voice_chars}
 
 ## Metadata
-- image: {persona['image']}
-- entry_message: {persona.get('entry_message', DEFAULT_ENTRY_MESSAGE)}
+- image: {metadata['image']}
+- entry_message: {metadata['entry_message']}
+- cartesia_voice_id: {metadata['cartesia_voice_id']}
+- gender: {metadata['gender']}
+- relevant_links: {' '.join(metadata['relevant_links'])}
 """
 
-            with open(persona_dir / "README.md", "w", encoding="utf-8") as f:
+            with open(readme_file, "w", encoding="utf-8") as f:
                 f.write(readme_content)
 
             return True
@@ -211,5 +273,5 @@ class PersonaManager:
         return not (current_url and domain in current_url)
 
 
-# Global instance for easy access
+# Create global instance for easy access
 persona_manager = PersonaManager()

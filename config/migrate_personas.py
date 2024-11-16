@@ -1,3 +1,4 @@
+import asyncio
 import random
 import shutil
 from pathlib import Path
@@ -11,9 +12,10 @@ from config.prompts import (
     DEFAULT_VOICE_CHARACTERISTICS,
     SKIN_TONES,
 )
+from config.voice_utils import VoiceUtils
 
 
-def migrate_personas():
+async def migrate_personas():
     """Migrate existing README.md files to add new voice and gender fields"""
     personas_dir = Path(__file__).parent / "personas"
     persona_mgr = PersonaManager()
@@ -38,10 +40,23 @@ def migrate_personas():
                 persona_data["cartesia_voice_id"] = ""
             if not persona_data.get("relevant_links"):
                 persona_data["relevant_links"] = []
+            if not persona_data.get("language"):
+                persona_data["language"] = (
+                    "en"  # Default to English for existing personas
+                )
 
             # Create backup of original README
             backup_path = readme_path.with_suffix(".md.bak")
             shutil.copy2(readme_path, backup_path)
+
+            # Try to match voice if none exists
+            if not persona_data.get("cartesia_voice_id"):
+                voice_utils = VoiceUtils()
+                voice_id = await voice_utils.match_voice_to_persona(
+                    persona_dir.name, persona_data.get("language", "en")
+                )
+                if voice_id:
+                    persona_data["cartesia_voice_id"] = voice_id
 
             # Write updated README with new fields
             readme_content = f"""# {persona_data['name']}
@@ -73,4 +88,4 @@ def migrate_personas():
 
 
 if __name__ == "__main__":
-    migrate_personas()
+    asyncio.run(migrate_personas())
