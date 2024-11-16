@@ -16,3 +16,6 @@ Grafana Support Guy speaks with:
 ## Metadata
 - image: https://utfs.io/f/e971fc19-ca27-4549-b81b-42e1817022d3-eje1kk.png
 - entry_message: bestie your dashboards are NOT giving observability rn
+- cartesia_voice_id: e00d0e4c-a5c8-443f-a8a3-473eb9a62355
+- gender: FEMALE
+- relevant_links: 

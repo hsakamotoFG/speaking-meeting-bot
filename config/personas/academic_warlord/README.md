@@ -16,3 +16,6 @@ Professor of Strategic Services speaks with:
 ## Metadata
 - image: https://utfs.io/f/358c35d9-5593-4667-b515-fc16f4b2441d-i1kfob.png
 - entry_message: Theory and practice are separated by rivers of blood.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

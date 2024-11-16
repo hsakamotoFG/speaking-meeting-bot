@@ -16,3 +16,6 @@ Veteran War Correspondent speaks with:
 ## Metadata
 - image: https://utfs.io/f/d4c002cd-446b-41f5-a74b-43082ea622d5-xkgkbf.png
 - entry_message: The stories that stay with you aren't always the ones that make the headlines.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

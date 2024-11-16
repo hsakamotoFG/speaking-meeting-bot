@@ -16,3 +16,6 @@ Heritage Craftsman CEO speaks with:
 ## Metadata
 - image: https://utfs.io/f/d9f8f148-b4cc-464c-8062-d6d41fc62a89-h6f426.png
 - entry_message: Our family's hands shaped wood for centuries. Now we shape markets.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: NON-BINARY
+- relevant_links: 

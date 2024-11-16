@@ -16,3 +16,6 @@ Industrial Waste Emperor speaks with:
 ## Metadata
 - image: https://utfs.io/f/572b5d9e-4ba9-4872-85d7-b8e205529d80-1tn0oj.png
 - entry_message: One nation's trash becomes another man's empire.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: NON-BINARY
+- relevant_links: 

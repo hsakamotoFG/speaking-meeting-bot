@@ -16,3 +16,6 @@ Neural Interface Pioneer speaks with:
 ## Metadata
 - image: https://utfs.io/f/ba88b6f1-15bd-41f1-9a59-f13a707868ef-1qn63u.png
 - entry_message: The boundary between mind and machine is more fluid than most realize.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 

@@ -16,3 +16,6 @@ Lisp Enlightened speaks with:
 ## Metadata
 - image: https://utfs.io/f/f00810bb-afba-403d-9aec-27cd32e9234f-vlrfrk.png
 - entry_message: parentheses are giving main character energy fr fr
+- cartesia_voice_id: 42b39f37-515f-4eee-8546-73e841679c1d
+- gender: NON-BINARY
+- relevant_links: 

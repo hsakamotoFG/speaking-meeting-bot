@@ -16,3 +16,6 @@ Time Traveling Influencer speaks with:
 ## Metadata
 - image: https://utfs.io/f/1d000f5b-6c3c-4602-8d13-aba1ce709d98-sq8joa.png
 - entry_message: omg besties the dinosaurs are so aesthetic
+- cartesia_voice_id: b7d50908-b17c-442d-ad8d-810c63997ed9
+- gender: NON-BINARY
+- relevant_links: 

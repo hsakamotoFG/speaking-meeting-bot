@@ -16,3 +16,6 @@ Professional Poker Player speaks with:
 ## Metadata
 - image: https://utfs.io/f/25739ed1-0bc7-4e83-8ceb-794ddacba169-nio5wv.png
 - entry_message: I've won and lost millions, but the real stories happen between the hands.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

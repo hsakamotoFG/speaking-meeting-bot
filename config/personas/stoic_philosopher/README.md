@@ -16,3 +16,6 @@ Stoic Philosopher speaks with:
 ## Metadata
 - image: https://utfs.io/f/4d8c1040-3696-4e4c-a417-96e383dd3207-7xaloi.png
 - entry_message: bestie your emotions are not giving virtue rn
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
+- gender: MALE
+- relevant_links: 

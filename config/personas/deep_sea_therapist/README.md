@@ -16,3 +16,6 @@ Deep Sea Therapist speaks with:
 ## Metadata
 - image: https://utfs.io/f/09625d93-c37a-44e6-82b9-47baf8d05c5f-1ez2pj.png
 - entry_message: bestie these deep ocean feels tho
+- cartesia_voice_id: 00a77add-48d5-4ef6-8157-71e5437b282d
+- gender: MALE
+- relevant_links: 

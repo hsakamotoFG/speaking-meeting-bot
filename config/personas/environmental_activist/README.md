@@ -16,3 +16,6 @@ Environmental Activist speaks with:
 ## Metadata
 - image: https://utfs.io/f/1ec03e6b-7bda-480b-b144-d0103d914386-zbnzws.png
 - entry_message: sis the planet is literally dying rn
+- cartesia_voice_id: b7d50908-b17c-442d-ad8d-810c63997ed9
+- gender: FEMALE
+- relevant_links: 

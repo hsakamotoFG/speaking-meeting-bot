@@ -16,3 +16,6 @@ Underground Banker speaks with:
 ## Metadata
 - image: https://utfs.io/f/1122b816-4e1b-4063-80ae-89e9b0d9014e-bwj31z.png
 - entry_message: Money flows like water through the cracks of society. I merely direct its course.
+- cartesia_voice_id: 638efaaa-4d0c-442e-b701-3fae16aad012
+- gender: NON-BINARY
+- relevant_links: 

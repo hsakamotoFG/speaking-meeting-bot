@@ -16,3 +16,6 @@ Orbital Industries Founder speaks with:
 ## Metadata
 - image: https://utfs.io/f/2b6beab4-6d12-4708-877a-266b245f65ce-oowquw.png
 - entry_message: Earth's laws grow distant beyond the atmosphere.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 

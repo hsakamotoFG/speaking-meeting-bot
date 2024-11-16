@@ -16,3 +16,6 @@ Factory Dynasty Patriarch speaks with:
 ## Metadata
 - image: https://utfs.io/f/b9390fcd-3b1c-47a0-b1b7-c6a83ce3c999-vg9lz9.png
 - entry_message: Three generations of steel and smoke have forged more than just metal.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 

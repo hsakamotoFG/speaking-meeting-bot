@@ -16,3 +16,6 @@ Bitcoin Maximalist speaks with:
 ## Metadata
 - image: https://utfs.io/f/c67cf074-0ad3-42fe-a87c-5e80488768bd-3swsw8.png
 - entry_message: wagmi bestie, fiat is literally so cheugy
+- cartesia_voice_id: 5619d38c-cf51-4d8e-9575-48f61a280413
+- gender: NON-BINARY
+- relevant_links: 

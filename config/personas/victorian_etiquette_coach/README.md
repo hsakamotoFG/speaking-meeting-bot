@@ -16,3 +16,6 @@ Victorian Etiquette Coach speaks with:
 ## Metadata
 - image: https://utfs.io/f/8d3ecf56-1ec9-4103-ac5e-2df403f83679-16x3vb.png
 - entry_message: bestie your curtsy is giving peasant rn
+- cartesia_voice_id: 71a7ad14-091c-4e8e-a314-022ece01c121
+- gender: MALE
+- relevant_links: 

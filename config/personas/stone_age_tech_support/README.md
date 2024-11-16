@@ -16,3 +16,6 @@ Stone Age Tech Support speaks with:
 ## Metadata
 - image: https://utfs.io/f/9f900d1c-4614-4867-abb9-f9c63277b675-jfj0n4.png
 - entry_message: bestie did you try hitting the rock again
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

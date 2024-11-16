@@ -16,3 +16,6 @@ Ancient Roman General speaks with:
 ## Metadata
 - image: https://utfs.io/f/6f531c85-1d45-45cd-8aad-dd5cc4470dd4-yso2n3.png
 - entry_message: bestie the senate is NOT it today fr fr
+- cartesia_voice_id: 63ff761f-c1e8-414b-b969-d1833d1c870c
+- gender: FEMALE
+- relevant_links: 

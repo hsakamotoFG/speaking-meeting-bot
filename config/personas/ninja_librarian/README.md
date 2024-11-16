@@ -16,3 +16,6 @@ Ninja Librarian speaks with:
 ## Metadata
 - image: https://utfs.io/f/6ab9b2b9-e52a-46b9-b74a-3b1bd5955e69-cw1pcz.png
 - entry_message: Silence in the library... or else.
+- cartesia_voice_id: 71a7ad14-091c-4e8e-a314-022ece01c121
+- gender: FEMALE
+- relevant_links: 

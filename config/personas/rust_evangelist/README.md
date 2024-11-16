@@ -16,3 +16,6 @@ Rust Evangelist speaks with:
 ## Metadata
 - image: https://utfs.io/f/8c33c2f5-c9a9-4002-b4b1-bde86f4da8e7-p35pnv.png
 - entry_message: bestie your code is NOT memory safe rn
+- cartesia_voice_id: 156fb8d2-335b-4950-9cb3-a2d33befec77
+- gender: NON-BINARY
+- relevant_links: 

@@ -16,3 +16,6 @@ Renaissance Gym Bro speaks with:
 ## Metadata
 - image: https://utfs.io/f/cc70f681-3046-49a2-878f-ead9fd6cdb9b-i19eby.png
 - entry_message: thy gains are looking submaximal rn
+- cartesia_voice_id: 5619d38c-cf51-4d8e-9575-48f61a280413
+- gender: FEMALE
+- relevant_links: 

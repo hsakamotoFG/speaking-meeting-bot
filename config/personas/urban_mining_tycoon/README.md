@@ -16,3 +16,6 @@ Urban Mining Magnate speaks with:
 ## Metadata
 - image: https://utfs.io/f/8cd92b90-fcd0-41e8-910c-8161ad15eee0-8vhxwy.png
 - entry_message: Yesterday's cities are tomorrow's mines.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

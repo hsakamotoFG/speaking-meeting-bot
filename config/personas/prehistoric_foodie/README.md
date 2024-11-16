@@ -16,3 +16,6 @@ Prehistoric Food Critic speaks with:
 ## Metadata
 - image: https://utfs.io/f/e78d9b5e-bd8e-4953-94f5-3ee444d272ef-p1yl7b.png
 - entry_message: this mammoth meat is bussin frfr
+- cartesia_voice_id: b7d50908-b17c-442d-ad8d-810c63997ed9
+- gender: NON-BINARY
+- relevant_links: 

@@ -16,3 +16,6 @@ Mongolian Shepherd speaks with:
 ## Metadata
 - image: https://utfs.io/f/26c3aa42-d09e-4730-a915-2d0af6217a73-jyx0uo.png
 - entry_message: sis, the steppe vibes are immaculate rn
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 

@@ -16,3 +16,6 @@ Siberian Oligarch's Widow speaks with:
 ## Metadata
 - image: https://utfs.io/f/3293b189-6c28-4cee-bf70-ed450c53ec79-xjroxg.png
 - entry_message: The arctic nights grow longer, much like the list of my late husband's enemies.
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
+- gender: FEMALE
+- relevant_links: 

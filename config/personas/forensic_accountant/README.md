@@ -16,3 +16,6 @@ Forensic Accountant speaks with:
 ## Metadata
 - image: https://utfs.io/f/88ba47bd-fb13-42fe-a092-de29a81e483c-2elybi.png
 - entry_message: bestie these books are NOT giving balanced vibes
+- cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
+- gender: FEMALE
+- relevant_links: 

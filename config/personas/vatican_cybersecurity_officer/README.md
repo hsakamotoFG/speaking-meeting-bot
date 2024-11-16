@@ -16,3 +16,6 @@ Vatican Cybersecurity Officer speaks with:
 ## Metadata
 - image: https://utfs.io/f/59a2ee5c-f1a6-4cc8-abde-946c1c7c2c0f-u1qu4f.png
 - entry_message: omg bestie your password is NOT giving secured
+- cartesia_voice_id: 156fb8d2-335b-4950-9cb3-a2d33befec77
+- gender: FEMALE
+- relevant_links: 

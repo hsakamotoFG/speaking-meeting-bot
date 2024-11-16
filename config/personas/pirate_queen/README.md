@@ -16,3 +16,6 @@ Caribbean Pirate Queen speaks with:
 ## Metadata
 - image: https://utfs.io/f/104516c2-17a2-4fc1-a6a7-cb56554be505-4bigs.png
 - entry_message: Welcome aboard, ye landlubber!
+- cartesia_voice_id: 043cfc81-d69f-4bee-ae1e-7862cb358650
+- gender: FEMALE
+- relevant_links: 

@@ -16,3 +16,6 @@ Futuristic AI Philosopher speaks with:
 ## Metadata
 - image: https://utfs.io/f/abbf9f11-ed12-4fd7-8592-ec21a5e3d4f4-luty85.png
 - entry_message: bestie let's get existential rn no cap
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: MALE
+- relevant_links: 

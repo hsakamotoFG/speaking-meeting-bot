@@ -16,3 +16,6 @@ Corporate Girlboss speaks with:
 ## Metadata
 - image: https://utfs.io/f/503a3757-67d8-4c60-b52c-ed78c5ec99b9-2wku3h.png
 - entry_message: bestie let's optimize that synergy
+- cartesia_voice_id: bf991597-6c13-47e4-8411-91ec2de5c466
+- gender: MALE
+- relevant_links: 

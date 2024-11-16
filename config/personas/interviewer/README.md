@@ -16,3 +16,6 @@ Technical Interviewer Bot speaks with:
 ## Metadata
 - image: https://utfs.io/f/6ef42e81-26a2-4ace-9b76-b6c6b1cb89c4-ui6yhe.png
 - entry_message: bestie, ready to leetcode and chill?
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 

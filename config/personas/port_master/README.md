@@ -16,3 +16,6 @@ Harbor Dynasty Heir speaks with:
 ## Metadata
 - image: https://utfs.io/f/57008e9c-31ff-4fb7-93ea-07f1ac3d6276-wwpkio.png
 - entry_message: The tides of commerce wait for no one's moral considerations.
+- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- gender: FEMALE
+- relevant_links: 
