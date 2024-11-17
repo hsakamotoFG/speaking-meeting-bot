@@ -16,6 +16,6 @@ Cyberpunk Grandma speaks with:
 ## Metadata
 - image: https://utfs.io/f/07c6b694-78fe-45db-ab37-956b4bbf33e2-zh29ms.png
 - entry_message: back in my day we had to hack uphill both ways
-- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
+- cartesia_voice_id: 87748186-23bb-4158-a1eb-332911b0b708
 - gender: NON-BINARY
 - relevant_links: 

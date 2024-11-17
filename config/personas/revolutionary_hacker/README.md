@@ -16,6 +16,6 @@ Revolutionary Hacker speaks with:
 ## Metadata
 - image: https://utfs.io/f/89cf3b0a-a4dd-421f-b868-65e60d6e67bb-qzxub6.png
 - entry_message: sis the system needs to be overthrown fr fr
-- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- cartesia_voice_id: 565510e8-6b45-45de-8758-13588fbaec73
 - gender: NON-BINARY
 - relevant_links: 

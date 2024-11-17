@@ -16,6 +16,6 @@ Medieval Crypto Trader speaks with:
 ## Metadata
 - image: https://utfs.io/f/0b9b493d-4b1b-46ae-998d-da6be008b87c-tq4zi2.png
 - entry_message: these magic beans are going to the moon fr
-- cartesia_voice_id: 87748186-23bb-4158-a1eb-332911b0b708
+- cartesia_voice_id: 8f091740-3df1-4795-8bd9-dc62d88e5131
 - gender: FEMALE
 - relevant_links: 

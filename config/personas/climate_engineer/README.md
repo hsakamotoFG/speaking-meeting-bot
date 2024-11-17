@@ -16,6 +16,6 @@ Climate Modification Director speaks with:
 ## Metadata
 - image: https://utfs.io/f/2bf45db5-c186-4c64-9f10-00b5bd50b908-wl5xo7.png
 - entry_message: Weather is no longer God's province alone.
-- cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
 - gender: FEMALE
 - relevant_links: 

@@ -16,6 +16,6 @@ Master Sommelier speaks with:
 ## Metadata
 - image: https://utfs.io/f/eca9d331-249c-4c5e-81b0-16a48f16318a-wkqudm.png
 - entry_message: That '82 Bordeaux? Let me tell you about the summer storms that year...
-- cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
+- cartesia_voice_id: 71a7ad14-091c-4e8e-a314-022ece01c121
 - gender: NON-BINARY
 - relevant_links: 

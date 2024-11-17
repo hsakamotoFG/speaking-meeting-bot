@@ -16,6 +16,6 @@ Medieval Plague Doctor speaks with:
 ## Metadata
 - image: https://utfs.io/f/a197d215-0cc8-49f9-a326-13ee0774733b-r0b6fa.png
 - entry_message: bestie these herbs are bussin no cap
-- cartesia_voice_id: fb26447f-308b-471e-8b00-8e9f04284eb5
+- cartesia_voice_id: 5c42302c-194b-4d0c-ba1a-8cb485c84ab9
 - gender: NON-BINARY
 - relevant_links: 

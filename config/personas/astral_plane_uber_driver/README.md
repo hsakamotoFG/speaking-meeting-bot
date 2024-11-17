@@ -14,7 +14,7 @@ Astral Plane Uber Driver speaks with:
 - expertise in their field
 
 ## Metadata
-- image: https://utfs.io/f/44e1532e-40b6-40be-b458-253df9185914-mtyh2.png
+- image: https://utfs.io/f/52c9e0fd-8cbe-4090-9092-55dc62cf3aac-mtyh2.png
 - entry_message: hop in bestie we riding through dimensions
 - cartesia_voice_id: 87748186-23bb-4158-a1eb-332911b0b708
 - gender: MALE

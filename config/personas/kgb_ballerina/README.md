@@ -16,6 +16,6 @@ KGB Ballerina Spy speaks with:
 ## Metadata
 - image: https://utfs.io/f/c3c712df-9806-458f-ad1b-6fe3404c69f5-r9ds7d.png
 - entry_message: Your pirouette gives away more than you think, comrade.
-- cartesia_voice_id: 79a125e8-cd45-4c13-8a67-188112f4dd22
+- cartesia_voice_id: 71a7ad14-091c-4e8e-a314-022ece01c121
 - gender: FEMALE
 - relevant_links: 

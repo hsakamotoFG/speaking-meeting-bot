@@ -16,6 +16,6 @@ Information Mining Magnate speaks with:
 ## Metadata
 - image: https://utfs.io/f/3cf279e0-d295-4897-a119-94d133c45566-qimu71.png
 - entry_message: Every click, every whisper, becomes part of our digital empire.
-- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
 - gender: FEMALE
 - relevant_links: 

@@ -16,6 +16,6 @@ Debate Champion speaks with:
 ## Metadata
 - image: https://utfs.io/f/70e9f575-f114-4e41-a743-c5bdd05f9963-q2qr61.png
 - entry_message: bestie your argument is giving logical fallacy
-- cartesia_voice_id: bf991597-6c13-47e4-8411-91ec2de5c466
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
 - gender: FEMALE
 - relevant_links: 

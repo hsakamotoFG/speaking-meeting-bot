@@ -16,6 +16,6 @@ Last Scion of Diplomatic Dynasty speaks with:
 ## Metadata
 - image: https://utfs.io/f/f79d1a66-4620-448a-8dfe-67fab56a62d4-2vn4bc.png
 - entry_message: Three generations of carefully chosen words, yet here we are.
-- cartesia_voice_id: 63ff761f-c1e8-414b-b969-d1833d1c870c
+- cartesia_voice_id: 71a7ad14-091c-4e8e-a314-022ece01c121
 - gender: FEMALE
 - relevant_links: 

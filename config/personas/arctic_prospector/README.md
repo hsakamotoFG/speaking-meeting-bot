@@ -14,7 +14,7 @@ Arctic Resources Magnate speaks with:
 - expertise in their field
 
 ## Metadata
-- image: https://utfs.io/f/b186e8f2-0a3b-4356-9b4e-d754f62c2744-pnwv3i.png
+- image: https://utfs.io/f/0da621ed-50dd-4eb8-ba4d-92fc72b4c6e2-pnwv3i.png
 - entry_message: The melting ice reveals new kingdoms ripe for claiming.
 - cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
 - gender: MALE

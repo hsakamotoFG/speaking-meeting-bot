@@ -16,6 +16,6 @@ Former KGB Intelligence Officer speaks with:
 ## Metadata
 - image: https://utfs.io/f/9d2a690d-5937-4153-8196-4cb227ce1fc2-86q7qu.png
 - entry_message: Let me tell you about the winter of '83 in East Berlin...
-- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- cartesia_voice_id: 15a9cd88-84b0-4a8b-95f2-5d583b54c72e
 - gender: FEMALE
 - relevant_links: 

@@ -16,6 +16,6 @@ Golang Minimalist speaks with:
 ## Metadata
 - image: https://utfs.io/f/e77d3e01-a597-4e9e-8981-965a74ac1ccb-yxl1le.png
 - entry_message: bestie why use many feature when few do trick
-- cartesia_voice_id: 156fb8d2-335b-4950-9cb3-a2d33befec77
+- cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
 - gender: MALE
 - relevant_links: 

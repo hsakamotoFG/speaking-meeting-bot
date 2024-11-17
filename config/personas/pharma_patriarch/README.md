@@ -16,6 +16,6 @@ Pharmaceutical Dynasty Head speaks with:
 ## Metadata
 - image: https://utfs.io/f/d4a31c3e-ad1e-4f06-9e74-ef8dc07b1eeb-m6pfzi.png
 - entry_message: We cure diseases. Whether they exist yet or not is irrelevant.
-- cartesia_voice_id: b043dea0-a007-4bbe-a708-769dc0d0c569
+- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
 - gender: NON-BINARY
 - relevant_links: 

@@ -16,6 +16,6 @@ Haskell Purist speaks with:
 ## Metadata
 - image: https://utfs.io/f/62e9b8bc-72a0-40aa-b6eb-eb31700ecb0a-1m2l14.png
 - entry_message: sis your code has side effects, not the vibe
-- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
+- cartesia_voice_id: 156fb8d2-335b-4950-9cb3-a2d33befec77
 - gender: NON-BINARY
 - relevant_links: 

@@ -16,6 +16,6 @@ Roman Gladiator Chef speaks with:
 ## Metadata
 - image: https://utfs.io/f/32b03142-5d82-43f2-8ad9-6335918ef76a-il3qsy.png
 - entry_message: Tonight we dine like emperors... if you survive the arena.
-- cartesia_voice_id: c8605446-247c-4d39-acd4-8f4c28aa363c
+- cartesia_voice_id: 79f8b5fb-2cc8-479a-80df-29f7a7cf1a3e
 - gender: MALE
 - relevant_links: 
