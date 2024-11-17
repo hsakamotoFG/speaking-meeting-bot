@@ -1,6 +1,6 @@
 # Available Cartesia Voices
 
-Last updated: 2024-11-16 01:01:05
+Last updated: 2024-11-16 18:21:25
 
 ## German Conversational Woman
 
@@ -1143,6 +1143,15 @@ Last updated: 2024-11-16 01:01:05
 - **ID**: `d4d4b115-57a0-48ea-9a1a-9898966c2966`
 - **Language**: zh
 - **Description**: This voice is neutral and deliberate, perfect for narrating stories and educational content in Chinese
+- **Public**: Yes
+
+---
+
+## Pleasant Man
+
+- **ID**: `729651dc-c6c3-4ee5-97fa-350da1f88600`
+- **Language**: en
+- **Description**: A pleasant male voice that's good for use cases like demos and customer support calls
 - **Public**: Yes
 
 ---
