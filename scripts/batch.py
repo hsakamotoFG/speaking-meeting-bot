@@ -239,6 +239,11 @@ class BotProxyManager:
         parser.add_argument(
             "--meeting-url", help="The meeting URL (must start with https://)"
         )
+        parser.add_argument(
+            "--add-recorder",
+            action="store_true",
+            help="Add an additional recording-only bot",
+        )
         args = parser.parse_args()
 
         self.initial_args = args
@@ -255,6 +260,29 @@ class BotProxyManager:
             return
 
         current_port = args.start_port
+
+        # Add recording-only bot if requested
+        if args.add_recorder:
+            recorder_name = f"recorder_{args.count + 1}"
+            logger.info(f"Adding recording-only bot: {recorder_name}")
+
+            # Start recorder bot
+            recorder_process = self.run_command(
+                [
+                    "poetry",
+                    "run",
+                    "meetingbaas",
+                    "--meeting-url",
+                    meeting_url,
+                    "--recorder-only",
+                ],
+                recorder_name,
+            )
+
+            if recorder_process:
+                logger.success(f"Successfully added recording bot: {recorder_name}")
+            else:
+                logger.error(f"Failed to start recording bot: {recorder_name}")
 
         try:
             logger.info(f"Starting {args.count} bot-proxy pairs with ngrok tunnels...")

@@ -70,48 +70,55 @@ def get_persona_selection():
             logger.warning("Please enter a valid persona name.")
 
 
-def create_baas_bot(meeting_url, ngrok_url, persona_name=None):
-    if not persona_name:
-        persona_name = get_persona_selection()
+def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=False):
+    if recorder_only:
+        config = {
+            "meeting_url": meeting_url,
+            "bot_name": "BaaS Meeting Recorder",
+            "recording_mode": "speaker_view",
+            "bot_image": "https://i0.wp.com/fishingbooker-prod-blog-backup.s3.amazonaws.com/blog/media/2019/06/14152536/Largemouth-Bass-1024x683.jpg",
+            "entry_message": "I will only record this meeting. I am from meetingbaas.com",
+            "reserved": False,
+            "speech_to_text": {"provider": "Default"},
+            "automatic_leave": {"waiting_room_timeout": 600},
+            "deduplication_key": "BaaS-Recorder",
+        }
+    else:
+        # Existing bot creation logic
+        if not persona_name:
+            persona_name = get_persona_selection()
 
-    try:
-        persona = persona_manager.get_persona(persona_name)
-    except KeyError:
         try:
-            persona = persona_manager.get_persona_by_name(persona_name)
+            persona = persona_manager.get_persona(persona_name)
         except KeyError:
-            logger.error(f"Persona '{persona_name}' not found in available personas.")
-            return None
+            try:
+                folder_name = persona_name.lower().replace(" ", "_")
+                persona = persona_manager.get_persona(folder_name)
+            except KeyError:
+                logger.error(
+                    f"Persona '{persona_name}' not found in available personas."
+                )
+                return None
 
+        config = {
+            "meeting_url": meeting_url,
+            "bot_name": persona["name"],
+            "recording_mode": "speaker_view",
+            "bot_image": persona["image"],
+            "entry_message": persona["entry_message"],
+            "reserved": False,
+            "speech_to_text": {"provider": "Default"},
+            "automatic_leave": {"waiting_room_timeout": 600},
+            "deduplication_key": str(uuid.uuid4()),
+            "streaming": {"input": ngrok_url, "output": ngrok_url},
+        }
+
+    # Create bot using configuration
     url = "https://api.meetingbaas.com/bots"
     headers = {
         "Content-Type": "application/json",
         "x-meeting-baas-api-key": API_KEY,
     }
-
-    deduplication_key = str(uuid.uuid4())
-    config = {
-        "meeting_url": meeting_url,
-        "bot_name": persona["name"],
-        "recording_mode": "speaker_view",
-        "bot_image": persona["image"],
-        "entry_message": persona["entry_message"],
-        "reserved": False,
-        "speech_to_text": {"provider": "Default"},
-        "automatic_leave": {"waiting_room_timeout": 600},
-        "deduplication_key": deduplication_key,
-        "streaming": {"input": ngrok_url, "output": ngrok_url},
-    }
-
-    logger.warning(
-        f"Creating meeting bot with persona: {persona['name']}, image: {persona['image']} and entry message: {persona['entry_message']}"
-    )
-    logger.debug(f"Full Meeting Baas Bot configuration: {config}")
-
-    # logger.warning(f"**BOT NAME: {persona['name']}**")
-    # logger.warning(f"**SYSTEM PROMPT in meetingbaas.py**")
-    # logger.warning(f"System prompt: {persona['prompt']}")
-    # logger.warning(f"**SYSTEM PROMPT END**")
 
     response = requests.post(url, json=config, headers=headers)
     if response.status_code == 200:
@@ -154,7 +161,8 @@ class BotManager:
 
         while True:
             try:
-                self.get_or_update_urls()
+                if not self.args.recorder_only:
+                    self.get_or_update_urls()
                 self.create_and_manage_bot()
             except Exception as e:
                 logger.exception(f"An error occurred during bot management: {e}")
@@ -186,7 +194,10 @@ class BotManager:
 
     def create_and_manage_bot(self):
         self.current_bot_id = create_baas_bot(
-            self.args.meeting_url, self.args.ngrok_url, self.args.persona_name
+            self.args.meeting_url,
+            self.args.ngrok_url,
+            self.args.persona_name,
+            self.args.recorder_only,
         )
 
         logger.warning(f"Bot name: {self.args.persona_name}")
@@ -236,6 +247,14 @@ def main():
     parser.add_argument(
         "--persona-name",
         help="The name of the persona to use (e.g., 'interviewer', 'pair_programmer')",
+    )
+    parser.add_argument(
+        "--recorder-only",
+        action="store_true",
+        help="Run as recording-only bot",
+    )
+    parser.add_argument(
+        "--config", type=str, help="JSON configuration for recorder bot"
     )
 
     args = parser.parse_args()
