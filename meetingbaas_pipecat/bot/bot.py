@@ -230,8 +230,10 @@ async def main():
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        messages.append({"role": "system", "content": system_prompt})
-        await task.queue_frames([LLMMessagesFrame(messages)])
+        # TODO: enable the persona to store whether or uncomment this when we have a way to send the system prompt to the LLM
+        # messages.append({"role": "system", "content": system_prompt})
+        # await task.queue_frames([LLMMessagesFrame(messages)])
+        logger.info("Client connected")
 
     runner = PipelineRunner()
     await runner.run(task)
