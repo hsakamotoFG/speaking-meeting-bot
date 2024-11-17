@@ -1,63 +1,57 @@
 # Speaking Bot
 
-Deploy AI-powered meeting agents that can join and participate in Zoom and Microsoft Teams (and soon on Teams!). These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
+Deploy AI-powered meeting agents that can join and participate in Zoom and Microsoft Teams (and soon on Zoom!). These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
 
 ## Overview
 
 The Meeting Agent Bot allows you to:
 
 -   Launch one or more AI agents into Google Meet or Microsoft Teams (Zoom is due ASAP)
--   Give each agent a unique personality and conversation style
--   Run multiple instances locally or scale to web deployment
+-   Give each agent a unique personality, knowledge and conversation style
+-   Run multiple instances locally (2 max using Ngrok) or scale to web deployment
+-   Create custom personas with distinct characteristics and behaviors
 
 ## Technical Stack
 
-This bot utilizes:
+### Technical Components
 
--   MeetingBaas's APIs for meeting interactions
--   Pipecat's `WebsocketServerTransport` for real-time communication
--   Ngrok for local server exposure
+-   Poetry - Dependency management
+-   Protocol Buffers - Message serialization
+-   Ngrok - Local server exposure
+-   Pipecat's WebsocketServerTransport - Real-time communication
 
-### Multiple Instance Architecture
+### APIs & 3rd Party Services
 
-When running multiple bot instances:
+-   MeetingBaas - For meeting bots inside Google Meet and Microsoft Teams
+-   OpenAI - For conversation generation
+-   Cartesia - For Text-to-Speech conversion
+-   Deepgram - For Speech-to-Text conversion
+-   UTFS - For image storage
+-   Replicate - For image generation
 
--   Each bot requires a unique public Ngrok URL
--   MeetingBaas communicates with each bot through its dedicated WebSocket
--   Pipecat handles the real-time message routing
+## Persona System
 
-**Current Limitations**
+### Bot Service
 
-Currently, the app only supports 2 simultaneous agents in meetings, limited by local development and ngrok.
+-   Real-time audio processing pipeline
+-   WebSocket-based communication
+-   Tool integration (weather, time)
+-   Voice activity detection
+-   Message context management
 
-**Running Meeting Agents**
+-   Dynamic persona loading from markdown files
+-   Customizable personality traits and behaviors
+-   Support for multiple languages
+-   Voice characteristic customization
+-   Image generation for persona avatars
+-   Metadata management for each persona
 
-To run 1 or 2 meeting agents in a meeting, execute the following commands:
+### Persona Structure
 
-```bash
-# For 1 agent
-poetry run python scripts/batch.py -c 1 --meeting-url (GOOGLE_MEET-TEAMS)-link
-
-# For 2 agents
-poetry run python scripts/batch.py -c 2 --meeting-url (GOOGLE_MEET-TEAMS)-link
-
-# For 2 agents with chosen personalities
-poetry run python scripts/batch.py -c 2 --meeting-url (GOOGLE_MEET-TEAMS)-link --personas water_merchant arctic_prospector
-```
-
-## Persona Configuration
-
-### Structure
-
-Personas are stored in the `@personas` directory. Each persona has:
+Each persona is defined in the `@personas` directory with:
 
 -   A README.md defining their personality
 -   Space for additional markdown files to expand behavior
--   Consistent characteristics across all personas:
-    -   Gen-Z speech patterns
-    -   Technical expertise
-    -   Playful personality
-    -   Domain-specific knowledge
 
 ### Example Persona Structure
 
@@ -65,7 +59,7 @@ Personas are stored in the `@personas` directory. Each persona has:
 @personas/
 └── quantum_physicist/
     ├── README.md
-    └── (additional behavior files)
+    └── (additional beVhavior files)
 ```
 
 ## Prerequisites
@@ -141,7 +135,7 @@ For more than 2 agents, deploy to a web server to avoid Ngrok limitations.
 
 The persona architecture is designed to support:
 
--   Additional behavior files
+-   Additional behavior and knowledge files
 -   More detailed conversation patterns
 -   Specialized knowledge bases
 -   Custom interaction styles
@@ -153,11 +147,15 @@ The persona architecture is designed to support:
 -   Validate environment variables
 -   Ensure unique Ngrok URLs for multiple agents
 
-## Best Practices
-
--   Test personas in a private meeting first
--   Monitor agent behavior during initial deployment
--   Keep meeting URLs secure
--   Regular updates to persona configurations
-
 For more detailed information about specific personas or deployment options, check the respective documentation in the `@personas` directory.
+
+## Troubleshooting WebSocket Connections
+
+### Handling Timing Issues with ngrok and Meeting Baas Bots
+
+Sometimes, due to WebSocket connection delays through ngrok, the Meeting Baas bots may join the meeting before your local bot connects. If this happens:
+
+-   Simply press `Enter` to respawn your bot
+-   This will reinitiate the connection and allow your bot to join the meeting
+
+This is a normal occurrence and can be easily resolved with a quick bot respawn.
