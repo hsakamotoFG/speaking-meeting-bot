@@ -1,5 +1,9 @@
 # Speaking Bot
 
+<p align="center">
+  <img src="./images/SpeakingBot.png" alt="Speaking Bot Banner" width="100%">
+</p>
+
 Deploy AI-powered meeting agents that can join and participate in Zoom and Microsoft Teams (and soon on Zoom!). These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
 
 ## Overview
