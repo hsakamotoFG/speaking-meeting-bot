@@ -33,6 +33,15 @@ async def configure(
     # Use persona's prompt as system prompt if no override provided
     system_prompt = system_prompt or persona["prompt"]
 
+    # Pass on additional content from persona directory
+    additional_content = persona.get("additional_content", "")
+    if not additional_content:
+        logger.warning(f"**NO ADDITIONAL CONTENT FOUND for {persona['name']}**")
+        # raise Exception("No additional content found for persona")
+    else:
+        logger.warning(f"**ADDITIONAL CONTENT FOUND for {persona['name']}**")
+        # logger.warning(f"Additional content: {additional_content}")
+
     if not system_prompt:
         raise Exception("No system prompt provided")
 
@@ -47,6 +56,14 @@ async def configure(
             )
 
     logger.warning(
-        f"returning {args.host, args.port, system_prompt, voice_id, persona['name'], args}"
+        f"returning {args.host, args.port, system_prompt, voice_id, persona['name'], args, additional_content}"
     )
-    return (args.host, args.port, system_prompt, voice_id, persona["name"], args)
+    return (
+        args.host,
+        args.port,
+        system_prompt,
+        voice_id,
+        persona["name"],
+        args,
+        additional_content,
+    )

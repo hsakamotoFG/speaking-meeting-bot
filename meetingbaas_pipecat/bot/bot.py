@@ -90,7 +90,15 @@ async def log_speech(frame):
 
 async def main():
     # Make sure we use the correct order
-    (host, port, system_prompt, voice_id, persona_name, args) = await configure()
+    (
+        host,
+        port,
+        system_prompt,
+        voice_id,
+        persona_name,
+        args,
+        additional_content,
+    ) = await configure()
 
     logger.warning(f"**CARTESIA VOICE ID: {voice_id}**")
     logger.warning(f"**BOT NAME: {persona_name}**")
@@ -177,16 +185,26 @@ async def main():
     logger.warning(f"**SYSTEM PROMPT**")
     logger.warning(f"System prompt: {system_prompt}")
     logger.warning(f"**SYSTEM PROMPT END**")
+    logger.warning(f"**ADDITIONAL CONTENT FOUND for {persona_name}**")
+    # logger.warning(f"Additional context: {additional_content}")
     logger.warning(f"**FOR BOT NAME: {persona_name}**")
 
     messages = [
         {
             "role": "system",
-            "content": system_prompt
-            + "\n\n"
-            + f"You are {persona_name}"
-            + "\n\n"
-            + DEFAULT_SYSTEM_PROMPT,
+            "content": (
+                system_prompt
+                + "\n\n"
+                + f"You are {persona_name}"
+                + "\n\n"
+                + DEFAULT_SYSTEM_PROMPT
+                + "\n\n"
+                + "\n\n"
+                + "You have the following additional context. USE IT TO INFORM YOUR RESPONSES:"
+                + "\n\n"
+                + "\n\n"
+                + additional_content
+            ),
         },
     ]
 

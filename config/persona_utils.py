@@ -80,6 +80,27 @@ class PersonaManager:
             "relevant_links": metadata.get("relevant_links", []),
         }
 
+    def load_additional_content(self, persona_dir: Path) -> str:
+        """Load additional markdown content from persona directory"""
+        additional_content = []
+
+        # Skip these files
+        skip_files = {"README.md", ".DS_Store"}
+
+        try:
+            for file_path in persona_dir.glob("*.md"):
+                if file_path.name not in skip_files:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        if content:
+                            additional_content.append(
+                                f"# Content from {file_path.name}\n\n{content}"
+                            )
+        except Exception as e:
+            logger.error(f"Error loading additional content from {persona_dir}: {e}")
+
+        return "\n\n".join(additional_content)
+
     def load_personas(self) -> Dict:
         """Load personas from directory structure"""
         personas = {}
@@ -97,7 +118,14 @@ class PersonaManager:
 
                 with open(readme_file, "r", encoding="utf-8") as f:
                     content = f.read()
-                    personas[persona_dir.name] = self.parse_readme(content)
+                    persona_data = self.parse_readme(content)
+
+                    # Load additional content
+                    additional_content = self.load_additional_content(persona_dir)
+                    if additional_content:
+                        persona_data["additional_content"] = additional_content
+
+                    personas[persona_dir.name] = persona_data
 
             return personas
         except Exception as e:
