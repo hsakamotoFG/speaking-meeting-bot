@@ -70,6 +70,12 @@ def get_persona_selection():
             logger.warning("Please enter a valid persona name.")
 
 
+def get_baas_bot_dedup_key(character_name: str, is_recorder_only: bool) -> str:
+    if is_recorder_only:
+        return "BaaS-Recorder"
+    return character_name
+
+
 def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=False):
     if recorder_only:
         config = {
@@ -81,7 +87,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "reserved": False,
             "speech_to_text": {"provider": "Default"},
             "automatic_leave": {"waiting_room_timeout": 600},
-            "deduplication_key": "BaaS-Recorder",
+            "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
         }
     else:
         # Existing bot creation logic
@@ -109,7 +115,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "reserved": False,
             "speech_to_text": {"provider": "Default"},
             "automatic_leave": {"waiting_room_timeout": 600},
-            "deduplication_key": str(uuid.uuid4()),
+            "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
             "streaming": {"input": ngrok_url, "output": ngrok_url},
         }
 
