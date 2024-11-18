@@ -88,6 +88,9 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "speech_to_text": {"provider": "Default"},
             "automatic_leave": {"waiting_room_timeout": 600},
             "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
+            "extra": {
+                "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
+            },
         }
     else:
         # Existing bot creation logic
@@ -117,6 +120,9 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "automatic_leave": {"waiting_room_timeout": 600},
             "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
             "streaming": {"input": ngrok_url, "output": ngrok_url},
+            "extra": {
+                "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
+            },
         }
 
     # Create bot using configuration
