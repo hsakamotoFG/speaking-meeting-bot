@@ -83,7 +83,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "bot_name": "BaaS Meeting Recorder",
             "recording_mode": "speaker_view",
             "bot_image": "https://i0.wp.com/fishingbooker-prod-blog-backup.s3.amazonaws.com/blog/media/2019/06/14152536/Largemouth-Bass-1024x683.jpg",
-            "entry_message": "I will only record this meeting. I am from meetingbaas.com",
+            "entry_message": "I will only record this meeting to check the quality of the data recorded by MeetingBaas API through this meeting bot. To learn more about Meeting Baas, visit meetingbaas.com. Data recorded in this meeting will not be used for any other purpose than this quality check, in accordance with MeetingBaas's privacy policy, https://meetingbaas.com/privacy.",
             "reserved": False,
             "speech_to_text": {"provider": "Default"},
             "automatic_leave": {"waiting_room_timeout": 600},
@@ -91,6 +91,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "extra": {
                 "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
             },
+            #"webhook_url": "https://webhook-test.com/ce63096bd2c0f2793363fd3fb32bc066",
         }
     else:
         # Existing bot creation logic
@@ -123,6 +124,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "extra": {
                 "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
             },
+            # "webhook_url": "https://webhook-test.com/ce63096bd2c0f2793363fd3fb32bc066",
         }
 
     # Create bot using configuration
