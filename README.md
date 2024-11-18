@@ -4,34 +4,64 @@
   <img src="./images/SpeakingBot.png" alt="Speaking Bot Banner" width="100%">
 </p>
 
-Deploy AI-powered meeting agents that can join and participate in Zoom and Microsoft Teams (and soon on Zoom!). These agents have distinct personalities and can engage in conversations based on predefined personas defined in Markdown files.
+This repository expands upon [Pipecat](https://github.com/pipecat-ai/pipecat)'s Python framework for building voice and multimodal conversational agents. Our implementation creates AI meeting agents that can join and participate in Google Meet and Microsoft Teams meetings with distinct personalities and capabilities defined in Markdown files.
 
 ## Overview
 
-The Meeting Agent Bot allows you to:
+This project extends [Pipecat's WebSocket server implementation](https://github.com/pipecat-ai/pipecat/tree/main/examples/websocket-server) to create:
 
--   Launch one or more AI agents into Google Meet or Microsoft Teams (Zoom is due ASAP)
--   Give each agent a unique personality, knowledge and conversation style
--   Run multiple instances locally (2 max using Ngrok) or scale to web deployment
--   Create custom personas with distinct characteristics and behaviors
+-   Meeting agents that can join Google Meet or Microsoft Teams through the [MeetingBaas API](https://meetingbaas.com)
+-   Customizable personas with unique context
+-   Support for running multiple instances locally or at scale
 
-## Technical Stack
+## Architecture
 
-### Technical Components
+### Core Framework: Pipecat Integration
 
--   Poetry - Dependency management
--   Protocol Buffers - Message serialization
--   Ngrok - Local server exposure
--   Pipecat's WebsocketServerTransport - Real-time communication
+[Pipecat](https://github.com/pipecat-ai/pipecat) provides the foundational framework with:
 
-### APIs & 3rd Party Services
+-   Real-time audio processing pipeline
+-   WebSocket communication
+-   Voice activity detection
+-   Message context management
 
--   MeetingBaas - For meeting bots inside Google Meet and Microsoft Teams
--   OpenAI - For conversation generation
--   Cartesia - For Text-to-Speech conversion
--   Deepgram - For Speech-to-Text conversion
--   UTFS - For image storage
--   Replicate - For image generation
+In this implementation, Pipecat is integrated with [Cartesia](https://www.cartesia.ai/) for speech generation (text-to-speech), [Gladia](https://www.gladia.io/) or [Deepgram](https://deepgram.com/) for speech-to-text conversion, and [OpenAI](https://platform.openai.com/)'s GPT-4 as the underlying LLM.
+
+### Project Extensions
+
+Building upon Pipecat, we've added:
+
+-   Persona system with Markdown-based configuration for:
+    -   Core personality traits and behaviors
+    -   Knowledge base and domain expertise
+    -   Additional contextual information (websites formatted to MD, technical documentation, etc.)
+-   CLI-based creation tool
+-   AI image generation via [Replicate](https://replicate.com/docs)
+-   Image hosting through [UploadThing](https://uploadthing.com/) (UTFS)
+-   [MeetingBaas](https://meetingbaas.com) integration for video meeting platform support
+-   Multi-agent orchestration
+
+## Required API Keys
+
+### For Pipecat-related Services
+
+-   [OpenAI](https://platform.openai.com/) (LLM)
+-   [Cartesia](https://www.cartesia.ai/) (text-to-speech)
+-   [Gladia](https://www.gladia.io/) or [Deepgram](https://deepgram.com/) (speech-to-text)
+-   [MeetingBaas](https://meetingbaas.com) (video meeting platform integration)
+
+### For Project-specific Add-ons
+
+-   [OpenAI](https://platform.openai.com/) (LLM to complete the user prompt and match to a Cartesia Voice ID)
+-   [Replicate](https://replicate.com/docs) (AI image generation)
+-   [UploadThing](https://uploadthing.com/) (UTFS) (image hosting)
+
+For speech-related services (TTS/STT) and LLM choice (like Claude, GPT-4, etc), you can freely choose and swap between any of the integrations available in [Pipecat's supported services](https://docs.pipecat.ai/api-reference/services/supported-services).
+
+### Important Note
+
+[OpenAI](https://platform.openai.com/)'s GPT-4, [UploadThing](https://uploadthing.com/) (UTFS), and [Replicate](https://replicate.com/docs) are currently hard-coded specifically for the CLI-based persona generation features: matching personas to available voices from Cartesia, generating AI avatars, and creating initial personality descriptions and knowledge bases.
+You do not need a Replicat or UTFS API key to run the project if you're not using the CLI-based persona creation feature and edit Markdowns manually.
 
 ## Persona System
 
@@ -55,7 +85,7 @@ The Meeting Agent Bot allows you to:
 Each persona is defined in the `@personas` directory with:
 
 -   A README.md defining their personality
--   Space for additional markdown files to expand behavior
+-   Space for additional markdown files to expand knowledge and behaviour
 
 ### Example Persona Structure
 
@@ -139,10 +169,8 @@ For more than 2 agents, deploy to a web server to avoid Ngrok limitations.
 
 The persona architecture is designed to support:
 
--   Additional behavior and knowledge files
--   More detailed conversation patterns
--   Specialized knowledge bases
--   Custom interaction styles
+-   Scrapping the websites given by the user to MD for the bot knowledge base
+-   Containerizing this nicely
 
 ## Troubleshooting
 
