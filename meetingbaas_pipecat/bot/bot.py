@@ -15,9 +15,9 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.services.cartesia import CartesiaTTSService
-from pipecat.services.gladia import GladiaSTTService
 
-# from pipecat.services.gladia import DeepgramSTTService
+# from pipecat.services.gladia import GladiaSTTService
+from pipecat.services.deepgram import DeepgramSTTService
 from pipecat.services.openai import OpenAILLMService
 from pipecat.transports.network.websocket_server import (
     ProtobufFrameSerializer,
@@ -168,8 +168,8 @@ async def main():
     ]
 
     # use Gladia as our default STT service ;)
-    stt = GladiaSTTService(
-        api_key=os.getenv("GLADIA_API_KEY"), encoding="linear24", sample_rate=24000
+    stt = DeepgramSTTService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"), encoding="linear24", sample_rate=24000
     )
     # stt = GladiaSTTService(
     #     api_key=os.getenv("GLADIA_API_KEY"), encoding="linear24", sample_rate=24000

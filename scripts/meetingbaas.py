@@ -72,8 +72,8 @@ def get_persona_selection():
 
 def get_baas_bot_dedup_key(character_name: str, is_recorder_only: bool) -> str:
     if is_recorder_only:
-        return "BaaS-Recorder"
-    return character_name
+        return "BaaS-Recorder" + "-4"
+    return character_name + "-BaaS"
 
 
 def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=False):
@@ -91,7 +91,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "extra": {
                 "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
             },
-            #"webhook_url": "https://webhook-test.com/ce63096bd2c0f2793363fd3fb32bc066",
+            # "webhook_url": "",
         }
     else:
         # Existing bot creation logic
@@ -114,10 +114,10 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             "meeting_url": meeting_url,
             "bot_name": persona["name"],
             "recording_mode": "speaker_view",
-            "bot_image": persona["image"],
-            "entry_message": persona["entry_message"],
             "reserved": False,
-            "speech_to_text": {"provider": "Default"},
+            # no speech to text for speaking bots, add one to recorder bots
+            # TODO: log speech to text provided by Pipecat and speech to text streaming APIs
+            # "speech_to_text": {"provider": "Default"},
             "automatic_leave": {"waiting_room_timeout": 600},
             "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
             "streaming": {"input": ngrok_url, "output": ngrok_url},
@@ -127,12 +127,18 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
             # "webhook_url": "https://webhook-test.com/ce63096bd2c0f2793363fd3fb32bc066",
         }
 
-    # Create bot using configuration
+        if persona.get("image"):
+            config["bot_image"] = persona["image"]
+        if persona.get("entry_message"):
+            config["entry_message"] = persona["entry_message"]
+
     url = "https://api.meetingbaas.com/bots"
     headers = {
         "Content-Type": "application/json",
         "x-meeting-baas-api-key": API_KEY,
     }
+
+    logger.warning(f"Sending bot config to MeetingBaas API: {config}")
 
     response = requests.post(url, json=config, headers=headers)
     if response.status_code == 200:
