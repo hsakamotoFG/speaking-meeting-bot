@@ -23,6 +23,11 @@ async def configure(
         required=False,
         help="Name of the persona to use",
     )
+    parser.add_argument(
+        "--speak-first",
+        type=int,
+        help="Index of the bot that should speak first (1-based)",
+    )
 
     args, unknown = parser.parse_known_args()
 

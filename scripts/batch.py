@@ -178,8 +178,12 @@ class BotProxyManager:
                 listener.close()
                 logger.success(f"Successfully closed ngrok tunnel: {tunnel_url}")
 
-            # Terminate processes
-            for name, process_info in self.processes.items():
+            # Terminate processes in reverse order to ensure clean shutdown
+            process_names = list(self.processes.keys())
+            process_names.reverse()  # Reverse to terminate in opposite order of creation
+            
+            for name in process_names:
+                process_info = self.processes[name]
                 logger.info(f"Terminating process: {name}")
                 process = process_info["process"]
                 try:
@@ -191,9 +195,24 @@ class BotProxyManager:
                 except Exception as e:
                     logger.error(f"Error terminating process {name}: {e}")
 
+            # Clear the processes dictionary
+            self.processes.clear()
             logger.success("Cleanup completed successfully")
         except Exception as e:
             logger.error(f"Error during cleanup: {e}")
+
+    def signal_handler(self, signum, frame):
+        logger.warning("Ctrl+C detected, initiating cleanup...")
+        # Create and run a new event loop for cleanup
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(self.cleanup())
+        finally:
+            loop.close()
+        logger.success("Cleanup completed")
+        logger.info("Exiting...")
+        sys.exit(0)
 
     async def monitor_processes(self) -> None:
         """Monitor running processes and handle failures"""
@@ -243,6 +262,11 @@ class BotProxyManager:
             "--add-recorder",
             action="store_true",
             help="Add an additional recording-only bot",
+        )
+        parser.add_argument(
+            "--speak-first",
+            type=int,
+            help="Index of the bot that should speak first (1-based)",
         )
         args = parser.parse_args()
 
@@ -336,6 +360,9 @@ class BotProxyManager:
                 logger.warning(f"System prompt: {bot_prompt}")
                 logger.warning(f"**SYSTEM PROMPT END**")
 
+                # Determine if this bot should speak first
+                speak_first = args.speak_first == pair_num if args.speak_first else False
+
                 bot_process = self.run_command(
                     [
                         "poetry",
@@ -349,6 +376,7 @@ class BotProxyManager:
                         persona_name,
                         "--voice-id",
                         "40104aff-a015-4da1-9912-af950fbec99e",
+                        *(["--speak-first", str(pair_num)] if speak_first else []),
                     ],
                     bot_name,
                 )
@@ -386,23 +414,28 @@ class BotProxyManager:
                 )
                 if listener:
                     self.listeners.append(listener)
-                    meeting_name = f"meeting_{pair_num}"
-                    meeting_process = self.run_command(
-                        [
-                            "poetry",
-                            "run",
-                            "meetingbaas",
-                            "--meeting-url",
-                            meeting_url,
-                            "--persona-name",
-                            persona_name,
-                            "--ngrok-url",
-                            listener.url(),
-                        ],
-                        meeting_name,
-                    )
-                    if not meeting_process:
-                        logger.error(f"Failed to start {meeting_name}")
+
+                # Determine if this bot should speak first
+                speak_first = args.speak_first == pair_num if args.speak_first else False
+                
+                meeting_name = f"meeting_{pair_num}"
+                meeting_process = self.run_command(
+                    [
+                        "poetry",
+                        "run",
+                        "meetingbaas",
+                        "--meeting-url",
+                        self.initial_args.meeting_url,
+                        "--persona-name",
+                        persona_name,
+                        "--ngrok-url",
+                        listener.url(),
+                        *(["--speak-first"] if speak_first else []),
+                    ],
+                    meeting_name,
+                )
+                if not meeting_process:
+                    logger.error(f"Failed to start {meeting_name}")
 
                 current_port += 2
                 await asyncio.sleep(1)

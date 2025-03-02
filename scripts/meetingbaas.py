@@ -20,9 +20,14 @@ logger = configure_logger()
 # Load environment variables from .env file
 load_dotenv()
 API_KEY = os.getenv("MEETING_BAAS_API_KEY")
+API_URL = os.getenv("MEETING_BAAS_API_URL", "https://api.meetingbaas.com")
+
 if not API_KEY:
     logger.error("MEETING_BAAS_API_KEY not found in environment variables")
     exit(1)
+
+if not API_URL:
+    logger.warning("MEETING_BAAS_API_URL not found, using default: https://api.meetingbaas.com")
 
 
 def validate_url(url):
@@ -72,7 +77,8 @@ def get_persona_selection():
 
 def get_baas_bot_dedup_key(character_name: str, is_recorder_only: bool) -> str:
     if is_recorder_only:
-        return "BaaS-Recorder" + "-4"
+        # Generate a random UUID for recorder bots
+        return f"BaaS-Recorder-{uuid.uuid4().hex[:8]}"
     return character_name + "-BaaS"
 
 
@@ -132,7 +138,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
         if persona.get("entry_message"):
             config["entry_message"] = persona["entry_message"]
 
-    url = "https://api.meetingbaas.com/bots"
+    url = f"{API_URL}/bots"
     headers = {
         "Content-Type": "application/json",
         "x-meeting-baas-api-key": API_KEY,
@@ -152,7 +158,7 @@ def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=Fal
 
 
 def delete_bot(bot_id):
-    delete_url = f"https://api.meetingbaas.com/bots/{bot_id}"
+    delete_url = f"{API_URL}/bots/{bot_id}"
     headers = {
         "Content-Type": "application/json",
         "x-meeting-baas-api-key": API_KEY,

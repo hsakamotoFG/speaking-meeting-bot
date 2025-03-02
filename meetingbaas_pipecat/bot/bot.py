@@ -230,10 +230,14 @@ async def main():
 
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        # TODO: enable the persona to store whether or uncomment this when we have a way to send the system prompt to the LLM
-        # messages.append({"role": "system", "content": system_prompt})
-        # await task.queue_frames([LLMMessagesFrame(messages)])
         logger.info("Client connected")
+        if args.speak_first and args.speak_first > 0:
+            # Send an initial greeting when the bot joins
+            initial_message = {
+                "role": "user",
+                "content": "Please introduce yourself and start the conversation."
+            }
+            await task.queue_frames([LLMMessagesFrame([initial_message])])
 
     runner = PipelineRunner()
     await runner.run(task)
