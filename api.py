@@ -1,11 +1,14 @@
 import argparse
+import asyncio
 import json
 import logging
 import os
+import signal
 import subprocess
 import sys
+import time
 import uuid
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import requests
 import uvicorn
@@ -24,13 +27,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
 import protobufs.frames_pb2 as frames_pb2  # Import Protobuf definitions
-from scripts.meetingbaas_api import create_meeting_bot
+from meetingbaas_pipecat.utils.logger import configure_logger
+from scripts.meetingbaas_api import create_meeting_bot, leave_meeting_bot
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger("meetingbaas-api")
+# Configure logging with the prettier logger
+logger = configure_logger()
+logger.name = "meetingbaas-api"  # Set logger name after configuring
+
+# Set logging level for pipecat WebSocket client to WARNING to reduce noise
+pipecat_ws_logger = logging.getLogger("pipecat.transports.network.websocket_client")
+pipecat_ws_logger.setLevel(logging.WARNING)
 
 # Check for local dev mode marker file (created by the parent process)
 LOCAL_DEV_MODE = False
@@ -91,8 +97,8 @@ NGROK_URL_INDEX = 0
 
 # Global dictionary to store meeting details for each client
 MEETING_DETAILS: Dict[
-    str, Tuple[str, str]
-] = {}  # client_id -> (meeting_url, persona_name)
+    str, Tuple[str, str, Optional[str]]
+] = {}  # client_id -> (meeting_url, persona_name, meetingbaas_bot_id)
 PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}  # client_id -> process
 
 
@@ -116,14 +122,21 @@ class ConnectionRegistry:
             self.active_connections[client_id] = websocket
             self.logger.info(f"Client {client_id} connected")
 
-    def disconnect(self, client_id: str, is_pipecat: bool = False):
-        """Remove a connection."""
-        if is_pipecat and client_id in self.pipecat_connections:
-            del self.pipecat_connections[client_id]
-            self.logger.info(f"Pipecat client {client_id} disconnected")
-        elif client_id in self.active_connections:
-            del self.active_connections[client_id]
-            self.logger.info(f"Client {client_id} disconnected")
+    async def disconnect(self, client_id: str, is_pipecat: bool = False):
+        """Remove a connection and close the websocket."""
+        try:
+            if is_pipecat and client_id in self.pipecat_connections:
+                websocket = self.pipecat_connections[client_id]
+                await websocket.close(code=1000, reason="Bot disconnected")
+                del self.pipecat_connections[client_id]
+                self.logger.info(f"Pipecat client {client_id} disconnected")
+            elif client_id in self.active_connections:
+                websocket = self.active_connections[client_id]
+                await websocket.close(code=1000, reason="Bot disconnected")
+                del self.active_connections[client_id]
+                self.logger.info(f"Client {client_id} disconnected")
+        except Exception as e:
+            self.logger.error(f"Error during disconnect for {client_id}: {e}")
 
     def get_client(self, client_id: str) -> Optional[WebSocket]:
         """Get a client connection by ID."""
@@ -183,31 +196,61 @@ class MessageRouter:
         self.registry = registry
         self.converter = converter
         self.logger = logger
+        self.closing_clients = set()  # Track clients that are in the process of closing
+
+    def mark_closing(self, client_id: str):
+        """Mark a client as closing to prevent sending more data to it."""
+        self.closing_clients.add(client_id)
+        self.logger.debug(f"Marked client {client_id} as closing")
 
     async def send_binary(self, message: bytes, client_id: str):
         """Send binary data to a client."""
+        if client_id in self.closing_clients:
+            self.logger.debug(f"Skipping send to closing client {client_id}")
+            return
+
         client = self.registry.get_client(client_id)
         if client:
-            await client.send_bytes(message)
-            self.logger.debug(f"Sent {len(message)} bytes to client {client_id}")
+            try:
+                await client.send_bytes(message)
+                self.logger.debug(f"Sent {len(message)} bytes to client {client_id}")
+            except Exception as e:
+                self.logger.debug(f"Error sending binary to client {client_id}: {e}")
 
     async def send_text(self, message: str, client_id: str):
         """Send text message to a specific client."""
+        if client_id in self.closing_clients:
+            self.logger.debug(f"Skipping send_text to closing client {client_id}")
+            return
+
         client = self.registry.get_client(client_id)
         if client:
-            await client.send_text(message)
-            self.logger.debug(
-                f"Sent text message to client {client_id}: {message[:100]}..."
-            )
+            try:
+                await client.send_text(message)
+                self.logger.debug(
+                    f"Sent text message to client {client_id}: {message[:100]}..."
+                )
+            except Exception as e:
+                self.logger.debug(f"Error sending text to client {client_id}: {e}")
 
     async def broadcast(self, message: str):
         """Broadcast text message to all clients."""
         for client_id, connection in self.registry.active_connections.items():
-            await connection.send_text(message)
-            self.logger.debug(f"Broadcast text message to client {client_id}")
+            if client_id not in self.closing_clients:
+                try:
+                    await connection.send_text(message)
+                    self.logger.debug(f"Broadcast text message to client {client_id}")
+                except Exception as e:
+                    self.logger.debug(f"Error broadcasting to client {client_id}: {e}")
 
     async def send_to_pipecat(self, message: bytes, client_id: str):
         """Convert raw audio to Protobuf frame and send to Pipecat."""
+        if client_id in self.closing_clients:
+            self.logger.debug(
+                f"Skipping send to Pipecat for closing client {client_id}"
+            )
+            return
+
         pipecat = self.registry.get_pipecat(client_id)
         if pipecat:
             try:
@@ -218,9 +261,18 @@ class MessageRouter:
                 )
             except Exception as e:
                 self.logger.error(f"Error sending to Pipecat: {str(e)}")
+                # If we get a connection closed error, mark client as closing
+                if "close" in str(e).lower() or "closed" in str(e).lower():
+                    self.mark_closing(client_id)
 
     async def send_from_pipecat(self, message: bytes, client_id: str):
         """Extract audio from Protobuf frame and send to client."""
+        if client_id in self.closing_clients:
+            self.logger.debug(
+                f"Skipping send from Pipecat for closing client {client_id}"
+            )
+            return
+
         client = self.registry.get_client(client_id)
         if client:
             try:
@@ -232,6 +284,9 @@ class MessageRouter:
                     )
             except Exception as e:
                 self.logger.error(f"Error processing Pipecat message: {str(e)}")
+                # If we get a connection closed error, mark client as closing
+                if "close" in str(e).lower() or "closed" in str(e).lower():
+                    self.mark_closing(client_id)
 
 
 class BotRequest(BaseModel):
@@ -244,6 +299,14 @@ class BotRequest(BaseModel):
     entry_message: Optional[str] = None
     extra: Optional[Dict] = None
     streaming_audio_frequency: str = "24khz"  # Default to 24khz for higher quality
+
+
+class LeaveBotRequest(BaseModel):
+    """Request model for making a bot leave a meeting"""
+
+    meeting_baas_api_key: str
+    client_id: Optional[str] = None
+    bot_id: Optional[str] = None
 
 
 @app.get("/")
@@ -449,17 +512,18 @@ async def run_bots(request: BotRequest, client_request: Request):
     # Generate a unique client ID for this bot
     bot_client_id = str(uuid.uuid4())
 
-    # Store meeting details for when the WebSocket connects
-    MEETING_DETAILS[bot_client_id] = (
-        request.meeting_url,
-        request.personas[0] if request.personas else "default",
-    )
-
     # Select the persona (use first one if provided, otherwise "default")
     persona_name = (
         request.personas[0]
         if request.personas and len(request.personas) > 0
         else "default"
+    )
+
+    # Store meeting details for when the WebSocket connects
+    MEETING_DETAILS[bot_client_id] = (
+        request.meeting_url,
+        persona_name,
+        None,  # MeetingBaas bot ID will be set after creation
     )
 
     # Create bot directly through MeetingBaas API
@@ -495,6 +559,13 @@ async def run_bots(request: BotRequest, client_request: Request):
             streaming_audio_frequency=request.streaming_audio_frequency,
         )
 
+        # Store the meetingbaas_bot_id in MEETING_DETAILS
+        MEETING_DETAILS[bot_client_id] = (
+            request.meeting_url,
+            persona_name,
+            meetingbaas_bot_id,
+        )
+
         return {
             "message": f"Bot successfully created for meeting {request.meeting_url}",
             "status": "success",
@@ -510,6 +581,158 @@ async def run_bots(request: BotRequest, client_request: Request):
             },
             status_code=500,
         )
+
+
+@app.delete("/bots/{bot_id}", response_model=Dict[str, Any])
+async def leave_bot(
+    bot_id: str,
+    request: LeaveBotRequest,
+):
+    """
+    Remove a bot from a meeting by its ID.
+
+    This will:
+    1. Call the MeetingBaas API to make the bot leave
+    2. Close WebSocket connections if they exist
+    3. Terminate the associated Pipecat process
+    """
+    logger.info(f"Removing bot with ID: {bot_id}")
+
+    # Verify we have at least the bot_id or client_id
+    if not bot_id and not request.bot_id and not request.client_id:
+        return JSONResponse(
+            content={
+                "message": "Either bot_id path parameter or client_id in request body is required",
+                "status": "error",
+            },
+            status_code=400,
+        )
+
+    # Use the path parameter bot_id if provided, otherwise use request.bot_id
+    meetingbaas_bot_id = bot_id or request.bot_id
+    client_id = request.client_id
+
+    # Try to find the client ID from our stored mapping if not provided
+    if not client_id:
+        # Look through MEETING_DETAILS to find the client ID for this bot ID
+        for cid, details in MEETING_DETAILS.items():
+            # See if we have a stored mapping for this bot ID
+            # Check if the stored meetingbaas_bot_id matches
+            if len(details) >= 3 and details[2] == meetingbaas_bot_id:
+                client_id = cid
+                logger.info(
+                    f"Found client ID {client_id} for bot ID {meetingbaas_bot_id}"
+                )
+                break
+            # For now, just checking if client ID is available as a fallback
+            logger.info(f"Checking client ID: {cid}")
+
+    # If we found a client ID, try to get the meetingbaas_bot_id if not already provided
+    if client_id and not meetingbaas_bot_id and client_id in MEETING_DETAILS:
+        details = MEETING_DETAILS[client_id]
+        if len(details) >= 3 and details[2]:
+            meetingbaas_bot_id = details[2]
+            logger.info(f"Found bot ID {meetingbaas_bot_id} for client {client_id}")
+
+    success = True
+
+    # 1. Call MeetingBaas API to make the bot leave
+    if meetingbaas_bot_id:
+        logger.info(f"Removing bot with ID: {meetingbaas_bot_id} from MeetingBaas API")
+        result = leave_meeting_bot(
+            bot_id=meetingbaas_bot_id,
+            api_key=request.meeting_baas_api_key,
+        )
+        if not result:
+            success = False
+            logger.error(
+                f"Failed to remove bot {meetingbaas_bot_id} from MeetingBaas API"
+            )
+    else:
+        logger.warning("No MeetingBaas bot ID found, skipping API call")
+
+    # 2. Close WebSocket connections if they exist
+    if client_id:
+        # Mark the client as closing to prevent further messages
+        router.mark_closing(client_id)
+
+        # Close Pipecat WebSocket first
+        if client_id in registry.pipecat_connections:
+            try:
+                await registry.disconnect(client_id, is_pipecat=True)
+                logger.info(f"Closed Pipecat WebSocket for client {client_id}")
+            except Exception as e:
+                success = False
+                logger.error(f"Error closing Pipecat WebSocket: {e}")
+
+        # Then close client WebSocket if it exists
+        if client_id in registry.active_connections:
+            try:
+                await registry.disconnect(client_id, is_pipecat=False)
+                logger.info(f"Closed client WebSocket for client {client_id}")
+            except Exception as e:
+                success = False
+                logger.error(f"Error closing client WebSocket: {e}")
+
+        # Add a small delay to allow for clean disconnection
+        await asyncio.sleep(0.5)
+
+    # 3. Terminate the Pipecat process after WebSockets are closed
+    if client_id and client_id in PIPECAT_PROCESSES:
+        process = PIPECAT_PROCESSES[client_id]
+        if process and process.poll() is None:  # If process is still running
+            try:
+                if terminate_process_gracefully(process, timeout=3.0):
+                    logger.info(
+                        f"Gracefully terminated Pipecat process for client {client_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Had to forcefully kill Pipecat process for client {client_id}"
+                    )
+            except Exception as e:
+                success = False
+                logger.error(f"Error terminating Pipecat process: {e}")
+
+        # Remove from our storage
+        PIPECAT_PROCESSES.pop(client_id, None)
+
+        # Clean up meeting details
+        if client_id in MEETING_DETAILS:
+            MEETING_DETAILS.pop(client_id, None)
+    else:
+        logger.warning(f"No Pipecat process found for client {client_id}")
+
+    return {
+        "message": "Bot removal request processed",
+        "status": "success" if success else "partial",
+        "bot_id": meetingbaas_bot_id,
+        "client_id": client_id,
+    }
+
+
+@app.delete("/clients/{client_id}", response_model=Dict[str, Any])
+async def leave_client(
+    client_id: str,
+    request: LeaveBotRequest,
+):
+    """
+    Remove a bot from a meeting by its client ID.
+    This is a convenience endpoint that sets the client_id and calls leave_bot.
+    """
+    logger.info(f"Removing bot for client: {client_id}")
+
+    # Update the request to include the client ID from the path
+    request.client_id = client_id
+
+    # Find the MeetingBaaS bot_id if available
+    if client_id in MEETING_DETAILS:
+        # Get any data we might need from our stored mapping
+        # For now we don't store bot_id directly, but could be added
+        pass
+
+    # Delegate to the main leave_bot endpoint
+    return await leave_bot("", request)
 
 
 # Initialize components
@@ -530,9 +753,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             await websocket.close(code=1008, reason="Missing meeting details")
             return
 
-        meeting_url, persona_name = MEETING_DETAILS[client_id]
+        meeting_url, persona_name, meetingbaas_bot_id = MEETING_DETAILS[client_id]
         logger.info(
-            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}"
+            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}"
         )
 
         # Start Pipecat process
@@ -561,6 +784,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 logger.info(
                     f"Received text message from client {client_id}: {text_data[:100]}..."
                 )
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for client {client_id}")
     except Exception as e:
         logger.error(f"Error in WebSocket connection: {e}")
     finally:
@@ -568,15 +793,22 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         if client_id in PIPECAT_PROCESSES:
             process = PIPECAT_PROCESSES[client_id]
             if process and process.poll() is None:  # If process is still running
-                process.terminate()
-                logger.info(f"Terminated Pipecat process for client {client_id}")
-            del PIPECAT_PROCESSES[client_id]
+                try:
+                    process.terminate()
+                    logger.info(f"Terminated Pipecat process for client {client_id}")
+                except Exception as e:
+                    logger.error(f"Error terminating process: {e}")
+            # Remove from our storage
+            PIPECAT_PROCESSES.pop(client_id, None)
 
         if client_id in MEETING_DETAILS:
-            del MEETING_DETAILS[client_id]
+            MEETING_DETAILS.pop(client_id, None)
 
-        await registry.disconnect(client_id)
-        logger.info(f"Client {client_id} disconnected")
+        try:
+            await registry.disconnect(client_id)
+            logger.info(f"Client {client_id} disconnected")
+        except Exception as e:
+            logger.error(f"Error disconnecting client {client_id}: {e}")
 
 
 @app.websocket("/pipecat/{client_id}")
@@ -599,12 +831,12 @@ async def pipecat_websocket(websocket: WebSocket, client_id: str):
                     f"Received text message from Pipecat client {client_id}: {data[:100]}..."
                 )
     except WebSocketDisconnect:
-        registry.disconnect(client_id, is_pipecat=True)
+        await registry.disconnect(client_id, is_pipecat=True)
     except Exception as e:
         logger.error(
             f"Error in Pipecat WebSocket handler for client {client_id}: {str(e)}"
         )
-        registry.disconnect(client_id, is_pipecat=True)
+        await registry.disconnect(client_id, is_pipecat=True)
 
 
 def start_pipecat_process(
@@ -661,6 +893,48 @@ def start_pipecat_process(
 
     logger.info(f"Started Pipecat process with PID {process.pid}")
     return process
+
+
+def terminate_process_gracefully(
+    process: subprocess.Popen, timeout: float = 2.0
+) -> bool:
+    """
+    Terminate a process gracefully by first sending SIGTERM, waiting for it to exit,
+    and then forcefully killing it if needed.
+
+    Args:
+        process: The process to terminate
+        timeout: How long to wait for graceful termination before force killing
+
+    Returns:
+        True if process was terminated gracefully, False if it had to be force-killed
+    """
+    if process.poll() is not None:
+        # Process is already terminated
+        return True
+
+    # Send SIGTERM
+    try:
+        process.terminate()
+
+        # Wait for process to exit
+        for _ in range(int(timeout * 10)):  # Check 10 times per second
+            if process.poll() is not None:
+                return True
+            time.sleep(0.1)
+
+        # Process didn't exit gracefully, force kill it
+        process.kill()
+        process.wait(1.0)  # Wait up to 1 second for it to be killed
+        return False
+    except Exception as e:
+        logger.error(f"Error terminating process: {e}")
+        # Try one last time with kill
+        try:
+            process.kill()
+        except:
+            pass
+        return False
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):

@@ -2,9 +2,6 @@ import argparse
 import asyncio
 import logging
 import os
-import sys
-import uuid
-from typing import Optional
 
 from dotenv import load_dotenv
 from pipecat.audio.vad.silero import SileroVADAnalyzer
@@ -16,6 +13,8 @@ from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
 from pipecat.serializers.protobuf import ProtobufFrameSerializer
 from pipecat.services.cartesia.tts import CartesiaTTSService
 from pipecat.services.deepgram.stt import DeepgramSTTService
+
+# from pipecat.services.gladia.stt import GladiaSTTService
 from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.network.websocket_client import (
     WebsocketClientParams,
@@ -123,6 +122,12 @@ async def main(
         sample_rate=output_sample_rate,
         language=language,  # Use language from persona
     )
+    # stt = GladiaSTTService(
+    #     api_key=os.getenv("GLADIA_API_KEY"),
+    #     encoding="linear16" if streaming_audio_frequency == "16khz" else "linear24",
+    #     sample_rate=output_sample_rate,
+    #     language=language,  # Use language from persona
+    # )
 
     # Make sure we're setting a valid bot name
     bot_name = persona_name or "Bot"

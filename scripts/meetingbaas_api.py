@@ -148,3 +148,36 @@ def create_meeting_bot(
     except Exception as e:
         logger.error(f"Error creating bot: {str(e)}")
         return None
+
+
+def leave_meeting_bot(bot_id: str, api_key: str) -> bool:
+    """
+    Call the MeetingBaas API to make a bot leave a meeting.
+
+    Args:
+        bot_id: The ID of the bot to remove
+        api_key: MeetingBaas API key
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    url = f"https://api.meetingbaas.com/bots/{bot_id}"
+    headers = {
+        "x-meeting-baas-api-key": api_key,
+    }
+
+    try:
+        logger.info(f"Removing bot with ID: {bot_id}")
+        response = requests.delete(url, headers=headers)
+
+        if response.status_code == 200:
+            logger.info(f"Bot {bot_id} successfully left the meeting")
+            return True
+        else:
+            logger.error(
+                f"Failed to remove bot: {response.status_code} - {response.text}"
+            )
+            return False
+    except Exception as e:
+        logger.error(f"Error removing bot: {str(e)}")
+        return False
