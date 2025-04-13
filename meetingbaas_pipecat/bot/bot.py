@@ -6,20 +6,19 @@ from datetime import datetime
 import aiohttp
 import pytz
 import requests
+from deepgram.options import LiveOptions
 from dotenv import load_dotenv
 from loguru import logger
-from openai.types.chat import ChatCompletionToolParam
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesFrame, TextFrame, TranscriptionFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.services.cartesia import CartesiaTTSService
-
-# from pipecat.services.gladia import GladiaSTTService
-from pipecat.services.deepgram import DeepgramSTTService
-from pipecat.services.openai import OpenAILLMService
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.services.llm_service import FunctionSchema, ToolsSchema
+from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.network.websocket_server import (
     ProtobufFrameSerializer,
     WebsocketServerParams,
@@ -270,58 +269,51 @@ async def main():
     )
 
     llm = OpenAILLMService(api_key=os.getenv("OPENAI_API_KEY"), model="gpt-4o-mini")
+
+    # Register functions using the new approach
     llm.register_function("get_weather", get_weather)
     llm.register_function("get_time", get_time)
 
-    tools = [
-        ChatCompletionToolParam(
-            type="function",
-            function={
-                "name": "get_weather",
-                "description": "Get the current weather",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The city and state, e.g. San Francisco, CA",
-                        },
-                        "format": {
-                            "type": "string",
-                            "enum": ["celsius", "fahrenheit"],
-                            "description": "The temperature unit to use. Infer this from the users location.",
-                        },
-                    },
-                    "required": ["location", "format"],
-                },
+    # Define function schemas using the new FunctionSchema format
+    weather_function = FunctionSchema(
+        name="get_weather",
+        description="Get the current weather",
+        properties={
+            "location": {
+                "type": "string",
+                "description": "The city and state, e.g. San Francisco, CA",
             },
-        ),
-        ChatCompletionToolParam(
-            type="function",
-            function={
-                "name": "get_time",
-                "description": "Get the current time for a specific location",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "location": {
-                            "type": "string",
-                            "description": "The location for which to retrieve the current time (e.g., 'Asia/Kolkata', 'America/New_York')",
-                        },
-                    },
-                    "required": ["location"],
-                },
+            "format": {
+                "type": "string",
+                "enum": ["celsius", "fahrenheit"],
+                "description": "The temperature unit to use. Infer this from the users location.",
             },
-        ),
-    ]
-
-    # use Gladia as our default STT service ;)
-    stt = DeepgramSTTService(
-        api_key=os.getenv("DEEPGRAM_API_KEY"), encoding="linear24", sample_rate=24000
+        },
+        required=["location", "format"],
     )
-    # stt = GladiaSTTService(
-    #     api_key=os.getenv("GLADIA_API_KEY"), encoding="linear24", sample_rate=24000
-    # )
+
+    time_function = FunctionSchema(
+        name="get_time",
+        description="Get the current time for a specific location",
+        properties={
+            "location": {
+                "type": "string",
+                "description": "The location for which to retrieve the current time (e.g., 'Asia/Kolkata', 'America/New_York')",
+            },
+        },
+        required=["location"],
+    )
+
+    tools = ToolsSchema(standard_tools=[weather_function, time_function])
+
+    # DeepgramSTTService with nova-3 model (default) or specify nova-2 if needed
+    stt = DeepgramSTTService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        encoding="linear24",
+        sample_rate=24000,
+        # Uncomment the line below if you specifically need nova-2 model
+        # live_options=LiveOptions(model="nova-2-general")
+    )
 
     tts = CartesiaTTSService(
         api_key=os.getenv("CARTESIA_API_KEY"),
@@ -356,18 +348,27 @@ async def main():
         },
     ]
 
+    # In v0.0.63, the OpenAILLMContext and context aggregation system was updated
+    # Create the context object with tools directly
     context = OpenAILLMContext(messages, tools)
-    context_aggregator = llm.create_context_aggregator(context)
+
+    # Get the context aggregator pair using the LLM's method
+    # This handles properly setting up the context aggregators
+    aggregator_pair = llm.create_context_aggregator(context)
+
+    # Get the user and assistant aggregators from the pair
+    user_aggregator = aggregator_pair.user()
+    assistant_aggregator = aggregator_pair.assistant()
 
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
-            context_aggregator.user(),
+            user_aggregator,  # Process user input and update context
             llm,
             tts,
             transport.output(),
-            context_aggregator.assistant(),
+            assistant_aggregator,  # Store LLM responses in context
         ]
     )
 

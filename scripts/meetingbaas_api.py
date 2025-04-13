@@ -74,6 +74,7 @@ def create_meeting_bot(
     bot_image: Optional[str] = None,
     entry_message: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
+    streaming_audio_frequency: str = "24khz",
 ):
     """
     Direct API call to MeetingBaas to create a bot
@@ -88,6 +89,7 @@ def create_meeting_bot(
         bot_image: Optional URL for bot avatar
         entry_message: Optional message to send when joining
         extra: Optional additional metadata for the bot
+        streaming_audio_frequency: Audio frequency for streaming (16khz or 24khz)
 
     Returns:
         str: The bot ID if successful, None otherwise
@@ -96,7 +98,11 @@ def create_meeting_bot(
     websocket_with_path = f"{websocket_url}/ws/{bot_id}"
 
     # Create streaming config
-    streaming = Streaming(input=websocket_with_path, output=websocket_with_path)
+    streaming = Streaming(
+        input=websocket_with_path,
+        output=websocket_with_path,
+        audio_frequency=streaming_audio_frequency,
+    )
 
     # Create request model
     request = MeetingBaasRequest(

@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 import sys
 import uuid
 from typing import Dict, List, Optional, Tuple
@@ -87,6 +88,12 @@ app.add_middleware(
 # Global variables for ngrok URL tracking
 NGROK_URLS = []
 NGROK_URL_INDEX = 0
+
+# Global dictionary to store meeting details for each client
+MEETING_DETAILS: Dict[
+    str, Tuple[str, str]
+] = {}  # client_id -> (meeting_url, persona_name)
+PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}  # client_id -> process
 
 
 class ConnectionRegistry:
@@ -433,8 +440,14 @@ async def run_bots(request: BotRequest, client_request: Request):
     logger.info(f"WebSocket URL: {websocket_url}")
     logger.info(f"Personas: {request.personas}")
 
-    # Generate a UUID for the bot
-    bot_client_id = str(uuid.uuid4())[:8]
+    # Generate a unique client ID for this bot
+    bot_client_id = str(uuid.uuid4())
+
+    # Store meeting details for when the WebSocket connects
+    MEETING_DETAILS[bot_client_id] = (
+        request.meeting_url,
+        request.personas[0] if request.personas else "default",
+    )
 
     # Select the persona (use first one if provided, otherwise "default")
     persona_name = (
@@ -457,6 +470,15 @@ async def run_bots(request: BotRequest, client_request: Request):
     )
 
     if meetingbaas_bot_id:
+        # Start the Pipecat process for this bot
+        pipecat_websocket_url = f"ws://localhost:8766/pipecat/{bot_client_id}"
+        process = start_pipecat_process(
+            client_id=bot_client_id,
+            websocket_url=pipecat_websocket_url,
+            meeting_url=request.meeting_url,
+            persona_name=persona_name,
+        )
+
         return {
             "message": f"Bot successfully created for meeting {request.meeting_url}",
             "status": "success",
@@ -482,67 +504,63 @@ router = MessageRouter(registry, converter)
 
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
-    """Handle WebSocket connections from clients (MeetingBaas)"""
-    logger.info(f"Received WebSocket connection attempt from client {client_id}")
+    await registry.connect(websocket, client_id)
+    logger.info(f"Client {client_id} connected")
+
     try:
-        await registry.connect(websocket, client_id)
-        logger.info(f"WebSocket connection established with client {client_id}")
+        # Get meeting details from our in-memory storage
+        if client_id not in MEETING_DETAILS:
+            logger.error(f"No meeting details found for client {client_id}")
+            await websocket.close(code=1008, reason="Missing meeting details")
+            return
 
-        # Track if we've already logged the first audio chunk
-        first_audio_logged = False
+        meeting_url, persona_name = MEETING_DETAILS[client_id]
+        logger.info(
+            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}"
+        )
 
+        # Start Pipecat process
+        pipecat_websocket_url = f"ws://localhost:8766/pipecat/{client_id}"
+        process = start_pipecat_process(
+            client_id=client_id,
+            websocket_url=pipecat_websocket_url,
+            meeting_url=meeting_url,
+            persona_name=persona_name,
+        )
+
+        # Store the process for cleanup
+        PIPECAT_PROCESSES[client_id] = process
+
+        # Process messages
         while True:
             message = await websocket.receive()
             if "bytes" in message:
-                data = message["bytes"]
-                # Only log the first audio data received
-                if not first_audio_logged:
-                    logger.info(
-                        f"Receiving audio data from client {client_id} ({len(data)} bytes per chunk)"
-                    )
-                    first_audio_logged = True
-                # Forward binary data to Pipecat with conversion
-                await router.send_to_pipecat(data, client_id)
+                audio_data = message["bytes"]
+                logger.debug(
+                    f"Received audio data ({len(audio_data)} bytes) from client {client_id}"
+                )
+                await router.send_to_pipecat(audio_data, client_id)
             elif "text" in message:
-                data = message["text"]
-                # Try to parse as JSON and pretty print speakers
-                try:
-                    json_data = json.loads(data)
-                    # Check if this is speaker data (contains name and isSpeaking fields)
-                    if (
-                        isinstance(json_data, list)
-                        and len(json_data) > 0
-                        and "name" in json_data[0]
-                        and "isSpeaking" in json_data[0]
-                    ):
-                        for speaker in json_data:
-                            status = (
-                                "started speaking"
-                                if speaker.get("isSpeaking")
-                                else "stopped speaking"
-                            )
-                            logger.info(
-                                f"👤 {speaker.get('name')} ({speaker.get('id')}) {status}"
-                            )
-                    else:
-                        # Regular JSON message
-                        logger.info(
-                            f"JSON message from client {client_id}:\n{json.dumps(json_data, indent=2)}"
-                        )
-                except json.JSONDecodeError:
-                    # Not JSON, just a regular text message
-                    logger.info(
-                        f"Received text message from client {client_id}: {data}"
-                    )
-
-                # Handle text messages (could be control commands)
-                await router.broadcast(f"Client {client_id} says: {data}")
-    except WebSocketDisconnect:
-        logger.warning(f"WebSocket disconnected for client {client_id}")
-        registry.disconnect(client_id)
+                text_data = message["text"]
+                logger.info(
+                    f"Received text message from client {client_id}: {text_data[:100]}..."
+                )
     except Exception as e:
-        logger.error(f"Error in WebSocket handler: {str(e)}")
-        registry.disconnect(client_id)
+        logger.error(f"Error in WebSocket connection: {e}")
+    finally:
+        # Clean up
+        if client_id in PIPECAT_PROCESSES:
+            process = PIPECAT_PROCESSES[client_id]
+            if process and process.poll() is None:  # If process is still running
+                process.terminate()
+                logger.info(f"Terminated Pipecat process for client {client_id}")
+            del PIPECAT_PROCESSES[client_id]
+
+        if client_id in MEETING_DETAILS:
+            del MEETING_DETAILS[client_id]
+
+        await registry.disconnect(client_id)
+        logger.info(f"Client {client_id} disconnected")
 
 
 @app.websocket("/pipecat/{client_id}")
@@ -571,6 +589,58 @@ async def pipecat_websocket(websocket: WebSocket, client_id: str):
             f"Error in Pipecat WebSocket handler for client {client_id}: {str(e)}"
         )
         registry.disconnect(client_id, is_pipecat=True)
+
+
+def start_pipecat_process(
+    client_id: str,
+    websocket_url: str,
+    meeting_url: str,
+    persona_name: str,
+    speak_first: bool = False,
+) -> subprocess.Popen:
+    """Start a Pipecat process for a client.
+
+    Args:
+        client_id: Unique ID for the client
+        websocket_url: WebSocket URL for the Pipecat process to connect to
+        meeting_url: URL of the meeting to join
+        persona_name: Name of the persona to use
+        speak_first: Whether the bot should speak first (deprecated)
+
+    Returns:
+        The started process object
+    """
+    logger.info(f"Starting Pipecat process for client {client_id}")
+
+    # Construct the command to run the meetingbaas.py script
+    script_path = os.path.join(os.path.dirname(__file__), "scripts", "meetingbaas.py")
+
+    # Convert speak_first to entry_message if needed
+    entry_message = (
+        "Hello, I am here to assist with the meeting."
+        if speak_first
+        else "Hello, I am the meeting bot"
+    )
+
+    # Start the process with updated arguments matching the new script interface
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            script_path,
+            "--meeting-url",
+            meeting_url,
+            "--persona-name",
+            persona_name,
+            "--entry-message",
+            entry_message,
+            "--websocket-url",  # Pass websocket_url directly
+            websocket_url,
+        ],
+        env=os.environ.copy(),  # Copy the current environment
+    )
+
+    logger.info(f"Started Pipecat process with PID {process.pid}")
+    return process
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
