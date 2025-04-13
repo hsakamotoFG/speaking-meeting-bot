@@ -2,8 +2,13 @@ import argparse
 import asyncio
 import logging
 import os
+from datetime import datetime
 
+import aiohttp
+import pytz
 from dotenv import load_dotenv
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.frames.frames import LLMMessagesFrame
 from pipecat.pipeline.pipeline import Pipeline
@@ -22,11 +27,56 @@ from pipecat.transports.network.websocket_client import (
 )
 
 from config.persona_utils import PersonaManager
+from config.prompts import DEFAULT_SYSTEM_PROMPT
 from meetingbaas_pipecat.utils.logger import configure_logger
 
 load_dotenv(override=True)
 
 logger = configure_logger()
+
+
+# Function tool implementations
+async def get_weather(
+    function_name, tool_call_id, arguments, llm, context, result_callback
+):
+    """Get the current weather for a location."""
+    location = arguments["location"]
+    format = arguments["format"]  # Default to Celsius if not specified
+    unit = (
+        "m" if format == "celsius" else "u"
+    )  # "m" for metric, "u" for imperial in wttr.in
+
+    url = f"https://wttr.in/{location}?format=%t+%C&{unit}"
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                weather_data = await response.text()
+                await result_callback(
+                    f"The weather in {location} is currently {weather_data} ({format.capitalize()})."
+                )
+            else:
+                await result_callback(
+                    f"Failed to fetch the weather data for {location}."
+                )
+
+
+async def get_time(
+    function_name, tool_call_id, arguments, llm, context, result_callback
+):
+    """Get the current time for a location."""
+    location = arguments["location"]
+
+    # Set timezone based on the provided location
+    try:
+        timezone = pytz.timezone(location)
+        current_time = datetime.now(timezone)
+        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        await result_callback(f"The current time in {location} is {formatted_time}.")
+    except pytz.UnknownTimeZoneError:
+        await result_callback(
+            f"Invalid location specified. Could not determine time for {location}."
+        )
 
 
 async def main(
@@ -37,6 +87,7 @@ async def main(
     bot_image: str = "",
     streaming_audio_frequency: str = "24khz",
     websocket_url: str = "",
+    enable_tools: bool = True,  # New parameter for enabling/disabling tools
 ):
     """
     Run the MeetingBaas bot with specified configurations
@@ -49,6 +100,7 @@ async def main(
         bot_image: URL for bot avatar
         streaming_audio_frequency: Audio frequency for streaming (16khz or 24khz)
         websocket_url: Full WebSocket URL to connect to, including any path
+        enable_tools: Whether to enable function tools like weather and time
     """
     # Load environment variables for credentials (OpenAI, etc.)
     load_dotenv()
@@ -90,10 +142,18 @@ async def main(
     )
 
     # Get persona configuration
-    persona = PersonaManager().get_persona(persona_name)
+    persona_manager = PersonaManager()
+    persona = persona_manager.get_persona(persona_name)
     if not persona:
         logger.error(f"Persona '{persona_name}' not found")
         return
+
+    # Get additional content from persona
+    additional_content = persona.get("additional_content", "")
+    if additional_content:
+        logger.info("Found additional content for persona")
+    else:
+        logger.info("No additional content found for persona")
 
     # Get voice ID from persona if available, otherwise use env var
     voice_id = persona.get("cartesia_voice_id") or os.getenv("CARTESIA_VOICE_ID")
@@ -110,6 +170,50 @@ async def main(
         api_key=os.getenv("OPENAI_API_KEY"),
         model="gpt-4-turbo-preview",
     )
+
+    # Register function tools if enabled
+    if enable_tools:
+        logger.info("Registering function tools")
+
+        # Register functions
+        llm.register_function("get_weather", get_weather)
+        llm.register_function("get_time", get_time)
+
+        # Define function schemas
+        weather_function = FunctionSchema(
+            name="get_weather",
+            description="Get the current weather",
+            properties={
+                "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "description": "The temperature unit to use. Infer this from the users location.",
+                },
+            },
+            required=["location", "format"],
+        )
+
+        time_function = FunctionSchema(
+            name="get_time",
+            description="Get the current time for a specific location",
+            properties={
+                "location": {
+                    "type": "string",
+                    "description": "The location for which to retrieve the current time (e.g., 'Asia/Kolkata', 'America/New_York')",
+                },
+            },
+            required=["location"],
+        )
+
+        # Create tools schema
+        tools = ToolsSchema(standard_tools=[weather_function, time_function])
+    else:
+        logger.info("Function tools are disabled")
+        tools = None
 
     # Add speech-to-text service
     # Extract language code from persona if available
@@ -133,17 +237,28 @@ async def main(
     bot_name = persona_name or "Bot"
     logger.info(f"Using bot name: {bot_name}")
 
-    # Set up messages only once
+    # Create a more comprehensive system prompt
+    system_content = persona["prompt"]
+
+    # Add additional context if available
+    if additional_content:
+        system_content += f"\n\nYou are {persona_name}\n\n{DEFAULT_SYSTEM_PROMPT}\n\n"
+        system_content += "You have the following additional context. USE IT TO INFORM YOUR RESPONSES:\n\n"
+        system_content += additional_content
+
+    # Set up messages
     messages = [
         {
             "role": "system",
-            "content": persona["prompt"],
+            "content": system_content,
         },
     ]
 
-    # In v0.0.63, the OpenAILLMContext and context aggregation system was updated
-    # Create the context object - no tools needed for this use case
-    context = OpenAILLMContext(messages)
+    # Create the context object - with or without tools
+    if enable_tools and tools:
+        context = OpenAILLMContext(messages, tools)
+    else:
+        context = OpenAILLMContext(messages)
 
     # Get the context aggregator pair using the LLM's method
     # This handles properly setting up the context aggregators
@@ -219,6 +334,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--websocket-url", help="Full WebSocket URL to connect to, including any path"
     )
+    parser.add_argument(
+        "--enable-tools",
+        action="store_true",
+        help="Enable function tools like weather and time",
+    )
 
     args = parser.parse_args()
 
@@ -232,5 +352,6 @@ if __name__ == "__main__":
             bot_image=args.bot_image,
             streaming_audio_frequency=args.streaming_audio_frequency,
             websocket_url=args.websocket_url,
+            enable_tools=args.enable_tools,
         )
     )

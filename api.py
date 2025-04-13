@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import os
+import random  # Add import for random selection
 import signal
 import subprocess
 import sys
@@ -27,12 +28,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
 import protobufs.frames_pb2 as frames_pb2  # Import Protobuf definitions
+from config.persona_utils import PersonaManager  # Import PersonaManager
 from meetingbaas_pipecat.utils.logger import configure_logger
 from scripts.meetingbaas_api import create_meeting_bot, leave_meeting_bot
 
 # Configure logging with the prettier logger
 logger = configure_logger()
 logger.name = "meetingbaas-api"  # Set logger name after configuring
+
+# Initialize PersonaManager to get available personas
+persona_manager = PersonaManager()
 
 # Set logging level for pipecat WebSocket client to WARNING to reduce noise
 pipecat_ws_logger = logging.getLogger("pipecat.transports.network.websocket_client")
@@ -97,8 +102,8 @@ NGROK_URL_INDEX = 0
 
 # Global dictionary to store meeting details for each client
 MEETING_DETAILS: Dict[
-    str, Tuple[str, str, Optional[str]]
-] = {}  # client_id -> (meeting_url, persona_name, meetingbaas_bot_id)
+    str, Tuple[str, str, Optional[str], bool]
+] = {}  # client_id -> (meeting_url, persona_name, meetingbaas_bot_id, enable_tools)
 PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}  # client_id -> process
 
 
@@ -299,6 +304,7 @@ class BotRequest(BaseModel):
     entry_message: Optional[str] = None
     extra: Optional[Dict] = None
     streaming_audio_frequency: str = "24khz"  # Default to 24khz for higher quality
+    enable_tools: bool = True  # Default to True to enable function tools by default
 
 
 class LeaveBotRequest(BaseModel):
@@ -512,18 +518,28 @@ async def run_bots(request: BotRequest, client_request: Request):
     # Generate a unique client ID for this bot
     bot_client_id = str(uuid.uuid4())
 
-    # Select the persona (use first one if provided, otherwise "default")
-    persona_name = (
-        request.personas[0]
-        if request.personas and len(request.personas) > 0
-        else "default"
-    )
+    # Select the persona - use provided one or pick a random one
+    if request.personas and len(request.personas) > 0:
+        persona_name = request.personas[0]
+        logger.info(f"Using specified persona: {persona_name}")
+    else:
+        # Get all available personas
+        available_personas = list(persona_manager.personas.keys())
+        if not available_personas:
+            # Fallback to baas_onboarder if we somehow can't get the personas list
+            persona_name = "baas_onboarder"
+            logger.warning("No personas found, using fallback persona: baas_onboarder")
+        else:
+            # Select a random persona
+            persona_name = random.choice(available_personas)
+            logger.info(f"Randomly selected persona: {persona_name}")
 
     # Store meeting details for when the WebSocket connects
     MEETING_DETAILS[bot_client_id] = (
         request.meeting_url,
         persona_name,
         None,  # MeetingBaas bot ID will be set after creation
+        request.enable_tools,
     )
 
     # Create bot directly through MeetingBaas API
@@ -557,6 +573,7 @@ async def run_bots(request: BotRequest, client_request: Request):
             meeting_url=request.meeting_url,
             persona_name=persona_name,
             streaming_audio_frequency=request.streaming_audio_frequency,
+            enable_tools=request.enable_tools,
         )
 
         # Store the meetingbaas_bot_id in MEETING_DETAILS
@@ -564,6 +581,7 @@ async def run_bots(request: BotRequest, client_request: Request):
             request.meeting_url,
             persona_name,
             meetingbaas_bot_id,
+            request.enable_tools,
         )
 
         return {
@@ -753,9 +771,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             await websocket.close(code=1008, reason="Missing meeting details")
             return
 
-        meeting_url, persona_name, meetingbaas_bot_id = MEETING_DETAILS[client_id]
+        meeting_url, persona_name, meetingbaas_bot_id, enable_tools = MEETING_DETAILS[
+            client_id
+        ]
         logger.info(
-            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}"
+            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}, {enable_tools}"
         )
 
         # Start Pipecat process
@@ -765,6 +785,10 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             websocket_url=pipecat_websocket_url,
             meeting_url=meeting_url,
             persona_name=persona_name,
+            # Use default streaming_audio_frequency and enable_tools
+            # These values could be stored in MEETING_DETAILS in the future if needed
+            streaming_audio_frequency="24khz",
+            enable_tools=enable_tools,
         )
 
         # Store the process for cleanup
@@ -846,6 +870,7 @@ def start_pipecat_process(
     persona_name: str,
     speak_first: bool = False,
     streaming_audio_frequency: str = "24khz",
+    enable_tools: bool = False,
 ) -> subprocess.Popen:
     """Start a Pipecat process for a client.
 
@@ -856,6 +881,7 @@ def start_pipecat_process(
         persona_name: Name of the persona to use
         speak_first: Whether the bot should speak first (deprecated)
         streaming_audio_frequency: The streaming audio frequency
+        enable_tools: Whether to enable function tools like weather and time
 
     Returns:
         The started process object
@@ -872,22 +898,29 @@ def start_pipecat_process(
         else "Hello, I am the meeting bot"
     )
 
+    # Build command with all parameters
+    command = [
+        sys.executable,
+        script_path,
+        "--meeting-url",
+        meeting_url,
+        "--persona-name",
+        persona_name,
+        "--entry-message",
+        entry_message,
+        "--websocket-url",
+        websocket_url,
+        "--streaming-audio-frequency",
+        streaming_audio_frequency,
+    ]
+
+    # Add optional flags
+    if enable_tools:
+        command.append("--enable-tools")
+
     # Start the process with updated arguments matching the new script interface
     process = subprocess.Popen(
-        [
-            sys.executable,
-            script_path,
-            "--meeting-url",
-            meeting_url,
-            "--persona-name",
-            persona_name,
-            "--entry-message",
-            entry_message,
-            "--websocket-url",
-            websocket_url,
-            "--streaming-audio-frequency",
-            streaming_audio_frequency,
-        ],
+        command,
         env=os.environ.copy(),  # Copy the current environment
     )
 
