@@ -51,14 +51,14 @@ The project follows a streamlined API-first approach with:
      "meeting_url": "https://meet.google.com/xxx-yyyy-zzz",
      "personas": ["interviewer"],
      "recorder_only": false,
-     "websocket_url": "ws://your-websocket-server:8000",
      "meeting_baas_api_key": "your-api-key",
      "bot_image": "https://example.com/avatar.jpg",
      "entry_message": "Hello, I'm here to help!"
    }
    ```
 
-   - Required fields: `meeting_url`, `websocket_url`, and `meeting_baas_api_key`
+   - Required fields: `meeting_url` and `meeting_baas_api_key`
+   - The WebSocket URL is determined automatically (see WebSocket URL Resolution below)
    - Returns: MeetingBaas bot ID and client ID for WebSocket connections
 
 3. WebSocket endpoint (`/ws/{client_id}`):
@@ -67,6 +67,17 @@ The project follows a streamlined API-first approach with:
 4. Pipecat WebSocket endpoint (`/pipecat/{client_id}`):
    - Connection point for Pipecat services
    - Bidirectional conversion between raw audio and Protobuf frames
+
+### WebSocket URL Resolution
+
+The server determines the WebSocket URL to use in the following priority order:
+
+1. User-provided URL in the request (if specified in the `websocket_url` field)
+2. `BASE_URL` environment variable (recommended for production)
+3. ngrok URL in local development mode
+4. Auto-detection from request headers (fallback, not reliable in production)
+
+For production deployments, it's strongly recommended to set the `BASE_URL` environment variable to your server's public domain (e.g., `https://your-server-domain.com`).
 
 ### Project Extensions
 
@@ -153,75 +164,158 @@ curl -sSL https://install.python-poetry.org | python3 -
 
 # Install Poetry (Windows)
 (Invoke-WebRequest -Uri https://install.python-poetry.org -UseBasicParsing).Content | py -
+```
 
-# Install dependencies
-poetry install
+### 2. Install System Dependencies
+
+The project requires certain system dependencies for scientific libraries:
+
+```bash
+# macOS (using Homebrew)
+brew install llvm cython
+
+# Ubuntu/Debian
+sudo apt-get install llvm python3-dev cython
+
+# Fedora/RHEL
+sudo dnf install llvm-devel python3-devel Cython
+```
+
+### 3. Set up Project with Poetry
+
+```bash
+# Clone the repository (if you haven't already)
+git clone https://github.com/yourusername/speaking-meeting-bot.git
+cd speaking-meeting-bot
+
+# Configure Poetry to use Python 3.11+
+poetry env use python3.11
+
+# Install dependencies with LLVM config path
+# On macOS:
+LLVM_CONFIG=$(brew --prefix llvm)/bin/llvm-config poetry install
+
+# On Linux (path may vary):
+# LLVM_CONFIG=/usr/bin/llvm-config poetry install
 
 # Activate virtual environment
 poetry shell
 ```
 
-### 2. Compile Protocol Buffers
+### 4. Compile Protocol Buffers
 
 ```bash
 poetry run python -m grpc_tools.protoc --proto_path=./protobufs --python_out=./protobufs frames.proto
 ```
 
-### 3. Configure Environment
+### 5. Configure Environment
 
 ```bash
 cp env.example .env
 ```
 
-Edit `.env` with your MeetingBaas credentials.
+Edit `.env` with your MeetingBaas credentials and add the `BASE_URL` variable for production deployments.
+
+Example `.env` file:
+
+```
+MEETING_BAAS_API_KEY=your_api_key_here
+BASE_URL=https://your-server-domain.com  # For production
+```
 
 ## Running Meeting Agents
 
 ### API Server Setup
 
-To start the API server:
+There are two ways to run the server:
 
 ```bash
-# Run the API server with hot reload
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8000
+# Standard mode
+poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
+
+# Local development mode with ngrok auto-configuration
+poetry run python api.py --local-dev
 ```
+
+The local development mode simplifies WebSocket setup by:
+
+- Automatically detecting ngrok tunnels
+- Handling WebSocket URL configuration for MeetingBaas
+- Supporting up to 2 bots (limited by free ngrok tunnels)
+- Providing clear warnings about limitations
+
+### Setting Up ngrok for Local Development
+
+1. Install ngrok if you haven't already:
+
+   ```bash
+   brew install ngrok  # macOS
+   ```
+
+2. Start ngrok tunnels for your bot connections:
+
+   ```bash
+   # Start ngrok with the provided configuration
+   ngrok start --all --config config/ngrok/config.yml
+   ```
+
+3. Start the server in local development mode:
+
+   ```bash
+   poetry run python api.py --local-dev
+   ```
+
+4. When prompted, enter the ngrok URLs shown in the ngrok terminal.
 
 ### Creating Bots via API
 
-Use the `/run-bots` endpoint to create bots directly:
+The WebSocket URL is optional in all cases. The server determines the appropriate URL based on the priority list described in the [WebSocket URL Resolution](#websocket-url-resolution) section:
 
 ```bash
-curl -X POST http://localhost:8000/run-bots \
+curl -X POST http://localhost:8766/run-bots \
   -H "Content-Type: application/json" \
   -d '{
     "meeting_url": "https://meet.google.com/xxx-yyyy-zzz",
     "personas": ["interviewer"],
-    "recorder_only": false,
-    "websocket_url": "ws://localhost:8000",
     "meeting_baas_api_key": "your-api-key"
   }'
 ```
 
-### Local Deployment with Ngrok
-
-For external access, use Ngrok to expose your local server:
+You can still manually specify a WebSocket URL if needed:
 
 ```bash
-ngrok http 8000
-```
-
-When using Ngrok, update your WebSocket URL to use the Ngrok domain with `wss://` protocol:
-
-```bash
-curl -X POST https://your-ngrok-url/run-bots \
+curl -X POST http://localhost:8766/run-bots \
   -H "Content-Type: application/json" \
   -d '{
     "meeting_url": "https://meet.google.com/xxx-yyyy-zzz",
     "personas": ["interviewer"],
-    "websocket_url": "wss://your-ngrok-url",
+    "websocket_url": "ws://your-custom-websocket-url:8766",
     "meeting_baas_api_key": "your-api-key"
   }'
 ```
+
+### Production Deployment Considerations
+
+When deploying to production, always set the `BASE_URL` environment variable to ensure reliable WebSocket connections:
+
+1. Set `BASE_URL` to your server's public domain:
+
+   ```
+   export BASE_URL=https://your-server-domain.com
+   ```
+
+2. Ensure your server is accessible on the public internet
+
+3. Consider using HTTPS/WSS for secure connections in production
+
+### Troubleshooting Local Development
+
+If you encounter issues with the local development mode:
+
+1. Make sure ngrok is running with the correct configuration
+2. Verify that you've entered the correct ngrok URLs when prompted
+3. Check that your ngrok URLs are accessible (try opening in a browser)
+4. Remember that the free tier of ngrok limits you to 2 concurrent tunnels
 
 ## Future Extensibility
 
@@ -262,7 +356,7 @@ poetry install
 poetry run python -m grpc_tools.protoc --proto_path=./protobufs --python_out=./protobufs frames.proto
 
 # Run the API server with hot reload
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8000
+poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
 ```
 
 ### Local Testing with Multiple Bots
@@ -271,32 +365,13 @@ For local development and testing with multiple bots, you'll need two terminals:
 
 ```bash
 # Terminal 1: Start the API server
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8000
+poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
 
 # Terminal 2: Start ngrok to expose your local server
-ngrok http 8000
+ngrok http 8766
 ```
 
-Once ngrok is running, it will provide you with a public URL (e.g., `https://abc123.ngrok.io`). Use this URL for your WebSocket connections:
-
-```bash
-# Test the API with curl
-curl -X POST https://your-ngrok-url/run-bots \
-  -H "Content-Type: application/json" \
-  -d '{
-    "count": 2,
-    "meeting_url": "https://your-meeting-url",
-    "personas": ["interviewer"],
-    "recorder_only": false,
-    "websocket_url": "wss://your-ngrok-url"
-  }'
-```
-
-Note:
-
-- Use `wss://` instead of `ws://` when connecting through ngrok
-- Each bot will create its own WebSocket connection to the server
-- You can monitor the connections in the uvicorn logs
+Once ngrok is running, it will provide you with a public URL that the server will use for WebSocket connections in local development mode.
 
 ### API Improvements
 
@@ -307,6 +382,8 @@ The API has been completely redesigned for simplicity and reliability:
 - Cleaner WebSocket handling with better error management
 - Improved logging with better visibility into the system
 - Enhanced JSON message processing for debugging
+- Intelligent WebSocket URL resolution with multiple fallback methods
+- Support for explicit BASE_URL configuration for production environments
 
 The direct API integration provides several benefits:
 
@@ -314,7 +391,7 @@ The direct API integration provides several benefits:
 # Direct API call to MeetingBaas
 meetingbaas_bot_id = create_meeting_bot(
     meeting_url=request.meeting_url,
-    websocket_url=request.websocket_url,
+    websocket_url=websocket_url,  # Determined by the server via multiple methods
     bot_id=bot_client_id,
     persona_name=persona_name,
     api_key=request.meeting_baas_api_key,
@@ -330,17 +407,22 @@ This approach eliminates the complexity of subprocess management, provides immed
 
 ### Production Deployment
 
+For production deployment, always set the BASE_URL environment variable:
+
 ```bash
+# Set the BASE_URL for WebSocket connections
+export BASE_URL=https://your-server-domain.com
+
 # Run the API server in production mode
-poetry run uvicorn api:app --host 0.0.0.0 --port 8000
+poetry run uvicorn api:app --host 0.0.0.0 --port 8766
 ```
 
 ### API Documentation
 
 Once the server is running, you can access:
 
-- Interactive API docs: `http://localhost:8000/docs`
-- OpenAPI specification: `http://localhost:8000/openapi.json`
+- Interactive API docs: `http://localhost:8766/docs`
+- OpenAPI specification: `http://localhost:8766/openapi.json`
 
 ## Future Development
 

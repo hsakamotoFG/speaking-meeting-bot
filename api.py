@@ -1,12 +1,23 @@
+import argparse
 import json
 import logging
 import os
+import sys
 import uuid
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import requests
 import uvicorn
 import websockets
-from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
+import yaml
+from fastapi import (
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
@@ -19,6 +30,34 @@ logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger("meetingbaas-api")
+
+# Check for local dev mode marker file (created by the parent process)
+LOCAL_DEV_MODE = False
+if os.path.exists(".local_dev_mode"):
+    with open(".local_dev_mode", "r") as f:
+        if f.read().strip().lower() == "true":
+            LOCAL_DEV_MODE = True
+            logger.info(
+                "🚀 Starting in LOCAL_DEV_MODE (detected from .local_dev_mode file)"
+            )
+
+# Get base URL from environment variable
+BASE_URL = os.environ.get("BASE_URL", None)
+if BASE_URL:
+    logger.info(f"Using BASE_URL from environment: {BASE_URL}")
+    # Convert http to ws or https to wss if needed
+    if BASE_URL.startswith("http://"):
+        WS_BASE_URL = "ws://" + BASE_URL[7:]
+    elif BASE_URL.startswith("https://"):
+        WS_BASE_URL = "wss://" + BASE_URL[8:]
+    else:
+        # Assume it's already in ws:// or wss:// format
+        WS_BASE_URL = BASE_URL
+else:
+    logger.info(
+        "No BASE_URL environment variable found. Will attempt auto-detection or use provided URLs."
+    )
+    WS_BASE_URL = None
 
 app = FastAPI()
 
@@ -121,11 +160,10 @@ manager = ConnectionManager()
 
 
 class BotRequest(BaseModel):
-    count: int = 1  # Default to 1, effectively making this a "per-bot" request
     meeting_url: str
     personas: Optional[List[str]] = None
     recorder_only: bool = False
-    websocket_url: Optional[str] = None
+    websocket_url: Optional[str] = None  # Now optional in all cases
     meeting_baas_api_key: str
     bot_image: Optional[str] = None
     entry_message: Optional[str] = None
@@ -137,18 +175,196 @@ async def root():
     return {"message": "MeetingBaas Bot API is running"}
 
 
-@app.post("/run-bots")
-async def run_bots(request: BotRequest):
+def load_ngrok_urls() -> List[str]:
     """
-    Create a bot directly via MeetingBaas API and establish WebSocket connection.
+    Load ngrok URLs using the ngrok API.
+    Returns a list of available ngrok URLs with preference for those pointing to port 8766.
     """
-    # Validate required parameters
-    if not request.websocket_url:
-        return JSONResponse(
-            content={"message": "WebSocket URL is required", "status": "error"},
-            status_code=400,
+    urls = []
+    priority_urls = []  # For tunnels pointing to port 8766
+
+    try:
+        # Try to fetch active ngrok tunnels from the API
+        # ngrok web interface is usually available at localhost:4040
+        logger.info("📡 Attempting to fetch ngrok tunnels from API...")
+        response = requests.get("http://localhost:4040/api/tunnels")
+
+        if response.status_code == 200:
+            data = response.json()
+            tunnels = data.get("tunnels", [])
+
+            if tunnels:
+                logger.info(f"🔍 Found {len(tunnels)} active ngrok tunnels")
+
+                # Extract public URLs from tunnels
+                for tunnel in tunnels:
+                    public_url = tunnel.get("public_url")
+                    config = tunnel.get("config", {})
+                    addr = config.get("addr", "")
+
+                    # Log the tunnel details for debugging
+                    logger.info(f"🔍 Tunnel: {public_url} -> {addr}")
+
+                    if public_url and public_url.startswith("https://"):
+                        # Check if this tunnel points to port 8766
+                        if addr and "8766" in addr:
+                            logger.info(
+                                f"✅ Found priority tunnel for port 8766: {public_url}"
+                            )
+                            priority_urls.append(public_url)
+                        else:
+                            urls.append(public_url)
+                            logger.info(f"✅ Added regular ngrok tunnel: {public_url}")
+
+                # Use priority URLs first, then regular ones
+                if priority_urls:
+                    logger.info(
+                        f"✅ Using {len(priority_urls)} priority tunnels for port 8766"
+                    )
+                    urls = priority_urls + urls
+
+                if not urls:
+                    logger.warning("⚠️ Found tunnels but none with HTTPS protocol!")
+            else:
+                logger.warning(
+                    "⚠️ No active ngrok tunnels found. Make sure ngrok is running with 'ngrok start --all'"
+                )
+        else:
+            logger.warning(
+                f"⚠️ Failed to get ngrok tunnels. Status code: {response.status_code}"
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Error accessing ngrok API: {e}")
+        logger.info(
+            "Make sure ngrok is running with 'ngrok start --all' before starting this server"
         )
 
+    # Log the final URLs we're using
+    if urls:
+        logger.info(f"📡 Final ngrok URLs to be used: {urls}")
+    else:
+        logger.warning(
+            "⚠️ No ngrok URLs found - websocket connections may not work properly!"
+        )
+
+    return urls
+
+
+# File-based counter for tracking ngrok URL usage
+def _get_next_ngrok_url(urls: List[str]) -> Optional[str]:
+    """
+    Get the next available ngrok URL in a stateless way.
+    Uses a simple file-based counter to track which URLs have been used.
+    """
+    if not urls:
+        return None
+
+    # Use a simple file-based counter
+    counter_file = ".ngrok_counter"
+    counter = 0
+
+    try:
+        if os.path.exists(counter_file):
+            with open(counter_file, "r") as f:
+                counter = int(f.read().strip() or "0")
+
+        # If we've used all URLs, return None
+        if counter >= len(urls):
+            logger.warning(f"⚠️ All {len(urls)} ngrok URLs have been assigned!")
+            return None
+
+        # Get the URL and increment the counter
+        url = urls[counter]
+        counter += 1
+
+        # Update the counter file
+        with open(counter_file, "w") as f:
+            f.write(str(counter))
+
+        # Convert http to ws for WebSocket
+        if url.startswith("http://"):
+            url = "ws://" + url[7:]
+        elif url.startswith("https://"):
+            url = "wss://" + url[8:]
+
+        logger.info(f"✅ Assigned ngrok WebSocket URL: {url} (URL #{counter})")
+        return url
+
+    except Exception as e:
+        logger.error(f"❌ Error handling ngrok counter: {e}")
+        # If the counter fails, just return the first URL as fallback
+        url = urls[0]
+        if url.startswith("http://"):
+            url = "ws://" + url[7:]
+        elif url.startswith("https://"):
+            url = "wss://" + url[8:]
+        return url
+
+
+def determine_websocket_url(
+    request_websocket_url: Optional[str], client_request: Request
+) -> str:
+    """
+    Determine the appropriate WebSocket URL based on the environment and request.
+    Uses a stateless approach to fetch ngrok URLs when needed.
+    """
+    # 1. If user explicitly provided a URL, use it (highest priority)
+    if request_websocket_url:
+        logger.info(f"Using user-provided WebSocket URL: {request_websocket_url}")
+        return request_websocket_url
+
+    # 2. If BASE_URL is set in environment, use it
+    if WS_BASE_URL:
+        logger.info(f"Using WebSocket URL from BASE_URL env: {WS_BASE_URL}")
+        return WS_BASE_URL
+
+    # 3. In local dev mode, try to use ngrok URL
+    if LOCAL_DEV_MODE:
+        logger.info(
+            f"🔍 LOCAL_DEV_MODE is {LOCAL_DEV_MODE}, attempting to get ngrok URL"
+        )
+
+        # Get ngrok URLs directly, don't rely on globals
+        ngrok_urls = load_ngrok_urls()
+        if ngrok_urls:
+            logger.info(f"🔍 Found {len(ngrok_urls)} ngrok URLs")
+
+            # Get the next available URL
+            ngrok_url = _get_next_ngrok_url(ngrok_urls)
+            if ngrok_url:
+                logger.info(f"Using ngrok WebSocket URL: {ngrok_url}")
+                return ngrok_url
+            else:
+                # If we're here, we've used all available ngrok URLs
+                logger.warning("⚠️ All ngrok URLs have been used")
+                # In local dev mode, we should require ngrok URLs
+                raise HTTPException(
+                    status_code=400,
+                    detail="No more ngrok URLs available. Limited to 2 bots in local dev mode.",
+                )
+        else:
+            logger.warning("⚠️ No ngrok URLs found despite being in LOCAL_DEV_MODE")
+
+    # 4. Auto-detect from request (fallback, only for non-local environments)
+    host = client_request.headers.get("host", "localhost:8766")
+    scheme = client_request.headers.get("x-forwarded-proto", "http")
+    websocket_scheme = "wss" if scheme == "https" else "ws"
+    auto_url = f"{websocket_scheme}://{host}"
+    logger.warning(
+        f"⚠️ Using auto-detected WebSocket URL: {auto_url} - This may not work in production. "
+        "Consider setting the BASE_URL environment variable."
+    )
+    return auto_url
+
+
+@app.post("/run-bots")
+async def run_bots(request: BotRequest, client_request: Request):
+    """
+    Create a bot directly via MeetingBaas API and establish WebSocket connection.
+    The WebSocket URL is determined automatically if not provided.
+    """
+    # Validate required parameters
     if not request.meeting_url:
         return JSONResponse(
             content={"message": "Meeting URL is required", "status": "error"},
@@ -161,8 +377,17 @@ async def run_bots(request: BotRequest):
             status_code=400,
         )
 
+    # Log local dev mode status
+    if LOCAL_DEV_MODE:
+        logger.info("🔍 Running in LOCAL_DEV_MODE - will prioritize ngrok URLs")
+    else:
+        logger.info("🔍 Running in standard mode")
+
+    # Determine WebSocket URL (works in all cases now)
+    websocket_url = determine_websocket_url(request.websocket_url, client_request)
+
     logger.info(f"Starting bot for meeting {request.meeting_url}")
-    logger.info(f"WebSocket URL: {request.websocket_url}")
+    logger.info(f"WebSocket URL: {websocket_url}")
     logger.info(f"Personas: {request.personas}")
 
     # Generate a UUID for the bot
@@ -178,7 +403,7 @@ async def run_bots(request: BotRequest):
     # Create bot directly through MeetingBaas API
     meetingbaas_bot_id = create_meeting_bot(
         meeting_url=request.meeting_url,
-        websocket_url=request.websocket_url,
+        websocket_url=websocket_url,
         bot_id=bot_client_id,
         persona_name=persona_name,
         api_key=request.meeting_baas_api_key,
@@ -192,7 +417,7 @@ async def run_bots(request: BotRequest):
         return {
             "message": f"Bot successfully created for meeting {request.meeting_url}",
             "status": "success",
-            "websocket_url": request.websocket_url,
+            "websocket_url": websocket_url,
             "bot_id": meetingbaas_bot_id,
             "client_id": bot_client_id,
         }
@@ -299,11 +524,77 @@ async def pipecat_websocket(websocket: WebSocket, client_id: str):
         manager.disconnect(client_id, is_pipecat=True)
 
 
-def start_server(host: str = "0.0.0.0", port: int = 8000):
+def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
     """Start the WebSocket server"""
+    global LOCAL_DEV_MODE
+
+    LOCAL_DEV_MODE = local_dev
+
+    # Reset the ngrok counter file when starting the server
+    if local_dev:
+        counter_file = ".ngrok_counter"
+        try:
+            # Create or overwrite the counter file with 0
+            with open(counter_file, "w") as f:
+                f.write("0")
+        except Exception as e:
+            logger.error(f"❌ Error resetting ngrok counter: {e}")
+
+    if local_dev:
+        print("\n⚠️ Starting in local development mode")
+        ngrok_urls = load_ngrok_urls()
+
+        if ngrok_urls:
+            print(f"✅ {len(ngrok_urls)} Bot(s) available from Ngrok")
+            for i, url in enumerate(ngrok_urls):
+                print(f"  Bot {i + 1}: {url}")
+        else:
+            print(
+                "⚠️ No ngrok URLs configured. Using auto-detection for WebSocket URLs."
+            )
+        print("\n")
+
     logger.info(f"Starting WebSocket server on {host}:{port}")
-    uvicorn.run(app, host=host, port=port)
+
+    # Pass the local_dev flag as a command-line argument to the uvicorn process
+    import sys
+
+    args = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "api:app",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+
+    if local_dev:
+        args.extend(["--reload"])
+
+        # Create a file that uvicorn will read on startup to set LOCAL_DEV_MODE
+        with open(".local_dev_mode", "w") as f:
+            f.write("true")
+    else:
+        # Make sure we don't have the flag set if not in local dev mode
+        if os.path.exists(".local_dev_mode"):
+            os.remove(".local_dev_mode")
+
+    # Use os.execv to replace the current process with uvicorn
+    # This way all arguments are directly passed to uvicorn
+    os.execv(sys.executable, args)
 
 
 if __name__ == "__main__":
-    start_server()
+    parser = argparse.ArgumentParser(description="Start the MeetingBaas Bot API server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8766, help="Port to listen on")
+    parser.add_argument(
+        "--local-dev",
+        action="store_true",
+        help="Run in local development mode with ngrok",
+    )
+
+    args = parser.parse_args()
+    start_server(args.host, args.port, args.local_dev)
