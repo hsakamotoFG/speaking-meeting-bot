@@ -142,6 +142,11 @@ class ProtobufConverter:
         self.sample_rate = sample_rate
         self.channels = channels
 
+    def set_sample_rate(self, sample_rate: int):
+        """Update the sample rate."""
+        self.sample_rate = sample_rate
+        self.logger.info(f"Updated ProtobufConverter sample rate to {sample_rate}")
+
     def raw_to_protobuf(self, raw_audio: bytes) -> bytes:
         """Convert raw audio data to a serialized Protobuf frame."""
         try:
@@ -238,6 +243,7 @@ class BotRequest(BaseModel):
     bot_image: Optional[str] = None
     entry_message: Optional[str] = None
     extra: Optional[Dict] = None
+    streaming_audio_frequency: str = "24khz"  # Default to 24khz for higher quality
 
 
 @app.get("/")
@@ -467,16 +473,26 @@ async def run_bots(request: BotRequest, client_request: Request):
         bot_image=request.bot_image,
         entry_message=request.entry_message,
         extra=request.extra,
+        streaming_audio_frequency=request.streaming_audio_frequency,
     )
 
     if meetingbaas_bot_id:
         # Start the Pipecat process for this bot
         pipecat_websocket_url = f"ws://localhost:8766/pipecat/{bot_client_id}"
+
+        # Update the converter's sample rate to match the streaming audio frequency
+        sample_rate = 24000 if request.streaming_audio_frequency == "24khz" else 16000
+        converter.set_sample_rate(sample_rate)
+        logger.info(
+            f"Set audio sample rate to {sample_rate} Hz for {request.streaming_audio_frequency}"
+        )
+
         process = start_pipecat_process(
             client_id=bot_client_id,
             websocket_url=pipecat_websocket_url,
             meeting_url=request.meeting_url,
             persona_name=persona_name,
+            streaming_audio_frequency=request.streaming_audio_frequency,
         )
 
         return {
@@ -597,6 +613,7 @@ def start_pipecat_process(
     meeting_url: str,
     persona_name: str,
     speak_first: bool = False,
+    streaming_audio_frequency: str = "24khz",
 ) -> subprocess.Popen:
     """Start a Pipecat process for a client.
 
@@ -606,6 +623,7 @@ def start_pipecat_process(
         meeting_url: URL of the meeting to join
         persona_name: Name of the persona to use
         speak_first: Whether the bot should speak first (deprecated)
+        streaming_audio_frequency: The streaming audio frequency
 
     Returns:
         The started process object
@@ -633,8 +651,10 @@ def start_pipecat_process(
             persona_name,
             "--entry-message",
             entry_message,
-            "--websocket-url",  # Pass websocket_url directly
+            "--websocket-url",
             websocket_url,
+            "--streaming-audio-frequency",
+            streaming_audio_frequency,
         ],
         env=os.environ.copy(),  # Copy the current environment
     )

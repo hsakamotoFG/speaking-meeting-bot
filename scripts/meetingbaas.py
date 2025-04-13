@@ -96,11 +96,15 @@ async def main(
         logger.error(f"Persona '{persona_name}' not found")
         return
 
+    # Get voice ID from persona if available, otherwise use env var
+    voice_id = persona.get("cartesia_voice_id") or os.getenv("CARTESIA_VOICE_ID")
+    logger.info(f"Using voice ID: {voice_id}")
+
     # Initialize services
     tts = CartesiaTTSService(
         api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id=os.getenv("CARTESIA_VOICE_ID"),
-        sample_rate=24000,
+        voice_id=voice_id,  # Use voice ID from persona
+        sample_rate=output_sample_rate,  # Use the same sample rate as transport
     )
 
     llm = OpenAILLMService(
@@ -109,10 +113,15 @@ async def main(
     )
 
     # Add speech-to-text service
+    # Extract language code from persona if available
+    language = persona.get("language_code", "en-US")
+    logger.info(f"Using language: {language}")
+
     stt = DeepgramSTTService(
         api_key=os.getenv("DEEPGRAM_API_KEY"),
-        encoding="linear24",
-        sample_rate=24000,
+        encoding="linear16" if streaming_audio_frequency == "16khz" else "linear24",
+        sample_rate=output_sample_rate,
+        language=language,  # Use language from persona
     )
 
     # Make sure we're setting a valid bot name
