@@ -70,6 +70,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add these globals near the top of the file, after other globals
+# Global variables for ngrok URL tracking
+NGROK_URLS = []
+NGROK_URL_INDEX = 0
+
 
 class ConnectionManager:
     def __init__(self):
@@ -251,55 +256,33 @@ def load_ngrok_urls() -> List[str]:
     return urls
 
 
-# File-based counter for tracking ngrok URL usage
 def _get_next_ngrok_url(urls: List[str]) -> Optional[str]:
     """
-    Get the next available ngrok URL in a stateless way.
-    Uses a simple file-based counter to track which URLs have been used.
+    Get the next available ngrok URL in a simpler way.
+    Uses a global counter variable to track which URLs have been used.
     """
+    global NGROK_URL_INDEX
+
     if not urls:
         return None
 
-    # Use a simple file-based counter
-    counter_file = ".ngrok_counter"
-    counter = 0
+    # If we've used all URLs, return None
+    if NGROK_URL_INDEX >= len(urls):
+        logger.warning(f"⚠️ All {len(urls)} ngrok URLs have been assigned!")
+        return None
 
-    try:
-        if os.path.exists(counter_file):
-            with open(counter_file, "r") as f:
-                counter = int(f.read().strip() or "0")
+    # Get the URL and increment the counter
+    url = urls[NGROK_URL_INDEX]
+    NGROK_URL_INDEX += 1
 
-        # If we've used all URLs, return None
-        if counter >= len(urls):
-            logger.warning(f"⚠️ All {len(urls)} ngrok URLs have been assigned!")
-            return None
+    # Convert http to ws for WebSocket
+    if url.startswith("http://"):
+        url = "ws://" + url[7:]
+    elif url.startswith("https://"):
+        url = "wss://" + url[8:]
 
-        # Get the URL and increment the counter
-        url = urls[counter]
-        counter += 1
-
-        # Update the counter file
-        with open(counter_file, "w") as f:
-            f.write(str(counter))
-
-        # Convert http to ws for WebSocket
-        if url.startswith("http://"):
-            url = "ws://" + url[7:]
-        elif url.startswith("https://"):
-            url = "wss://" + url[8:]
-
-        logger.info(f"✅ Assigned ngrok WebSocket URL: {url} (URL #{counter})")
-        return url
-
-    except Exception as e:
-        logger.error(f"❌ Error handling ngrok counter: {e}")
-        # If the counter fails, just return the first URL as fallback
-        url = urls[0]
-        if url.startswith("http://"):
-            url = "ws://" + url[7:]
-        elif url.startswith("https://"):
-            url = "wss://" + url[8:]
-        return url
+    logger.info(f"✅ Assigned ngrok WebSocket URL: {url} (URL #{NGROK_URL_INDEX})")
+    return url
 
 
 def determine_websocket_url(
@@ -307,8 +290,10 @@ def determine_websocket_url(
 ) -> str:
     """
     Determine the appropriate WebSocket URL based on the environment and request.
-    Uses a stateless approach to fetch ngrok URLs when needed.
+    Uses a cached list of ngrok URLs when in local dev mode.
     """
+    global NGROK_URLS
+
     # 1. If user explicitly provided a URL, use it (highest priority)
     if request_websocket_url:
         logger.info(f"Using user-provided WebSocket URL: {request_websocket_url}")
@@ -325,13 +310,16 @@ def determine_websocket_url(
             f"🔍 LOCAL_DEV_MODE is {LOCAL_DEV_MODE}, attempting to get ngrok URL"
         )
 
-        # Get ngrok URLs directly, don't rely on globals
-        ngrok_urls = load_ngrok_urls()
-        if ngrok_urls:
-            logger.info(f"🔍 Found {len(ngrok_urls)} ngrok URLs")
+        # Use cached ngrok URLs instead of loading them every time
+        if not NGROK_URLS:
+            logger.info("Loading ngrok URLs (first request)")
+            NGROK_URLS = load_ngrok_urls()
+
+        if NGROK_URLS:
+            logger.info(f"🔍 Found {len(NGROK_URLS)} ngrok URLs")
 
             # Get the next available URL
-            ngrok_url = _get_next_ngrok_url(ngrok_urls)
+            ngrok_url = _get_next_ngrok_url(NGROK_URLS)
             if ngrok_url:
                 logger.info(f"Using ngrok WebSocket URL: {ngrok_url}")
                 return ngrok_url
@@ -526,27 +514,21 @@ async def pipecat_websocket(websocket: WebSocket, client_id: str):
 
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
     """Start the WebSocket server"""
-    global LOCAL_DEV_MODE
+    global LOCAL_DEV_MODE, NGROK_URLS, NGROK_URL_INDEX
 
     LOCAL_DEV_MODE = local_dev
 
-    # Reset the ngrok counter file when starting the server
-    if local_dev:
-        counter_file = ".ngrok_counter"
-        try:
-            # Create or overwrite the counter file with 0
-            with open(counter_file, "w") as f:
-                f.write("0")
-        except Exception as e:
-            logger.error(f"❌ Error resetting ngrok counter: {e}")
+    # Reset the ngrok URL counter when starting the server
+    NGROK_URL_INDEX = 0
 
     if local_dev:
         print("\n⚠️ Starting in local development mode")
-        ngrok_urls = load_ngrok_urls()
+        # Cache the ngrok URLs at server start
+        NGROK_URLS = load_ngrok_urls()
 
-        if ngrok_urls:
-            print(f"✅ {len(ngrok_urls)} Bot(s) available from Ngrok")
-            for i, url in enumerate(ngrok_urls):
+        if NGROK_URLS:
+            print(f"✅ {len(NGROK_URLS)} Bot(s) available from Ngrok")
+            for i, url in enumerate(NGROK_URLS):
                 print(f"  Bot {i + 1}: {url}")
         else:
             print(
