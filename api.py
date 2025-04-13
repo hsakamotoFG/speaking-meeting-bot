@@ -41,18 +41,31 @@ if os.path.exists(".local_dev_mode"):
                 "🚀 Starting in LOCAL_DEV_MODE (detected from .local_dev_mode file)"
             )
 
+
+# Add this helper function before its first use
+def convert_http_to_ws_url(url: str) -> str:
+    """
+    Convert HTTP(S) URL to WS(S) URL.
+
+    Args:
+        url: HTTP or HTTPS URL to convert
+
+    Returns:
+        WebSocket URL (ws:// or wss://)
+    """
+    if url.startswith("http://"):
+        return "ws://" + url[7:]
+    elif url.startswith("https://"):
+        return "wss://" + url[8:]
+    return url  # Already a WS URL or other format
+
+
 # Get base URL from environment variable
 BASE_URL = os.environ.get("BASE_URL", None)
 if BASE_URL:
     logger.info(f"Using BASE_URL from environment: {BASE_URL}")
     # Convert http to ws or https to wss if needed
-    if BASE_URL.startswith("http://"):
-        WS_BASE_URL = "ws://" + BASE_URL[7:]
-    elif BASE_URL.startswith("https://"):
-        WS_BASE_URL = "wss://" + BASE_URL[8:]
-    else:
-        # Assume it's already in ws:// or wss:// format
-        WS_BASE_URL = BASE_URL
+    WS_BASE_URL = convert_http_to_ws_url(BASE_URL)
 else:
     logger.info(
         "No BASE_URL environment variable found. Will attempt auto-detection or use provided URLs."
@@ -76,17 +89,18 @@ NGROK_URLS = []
 NGROK_URL_INDEX = 0
 
 
-class ConnectionManager:
-    def __init__(self):
+class ConnectionRegistry:
+    """Manages WebSocket connections for clients and Pipecat."""
+
+    def __init__(self, logger=logger):
         self.active_connections: Dict[str, WebSocket] = {}
         self.pipecat_connections: Dict[str, WebSocket] = {}
         self.logger = logger
-        self.sample_rate = 24000  # Default sample rate for audio
-        self.channels = 1  # Default number of channels
 
     async def connect(
         self, websocket: WebSocket, client_id: str, is_pipecat: bool = False
     ):
+        """Register a new connection."""
         await websocket.accept()
         if is_pipecat:
             self.pipecat_connections[client_id] = websocket
@@ -96,6 +110,7 @@ class ConnectionManager:
             self.logger.info(f"Client {client_id} connected")
 
     def disconnect(self, client_id: str, is_pipecat: bool = False):
+        """Remove a connection."""
         if is_pipecat and client_id in self.pipecat_connections:
             del self.pipecat_connections[client_id]
             self.logger.info(f"Pipecat client {client_id} disconnected")
@@ -103,25 +118,89 @@ class ConnectionManager:
             del self.active_connections[client_id]
             self.logger.info(f"Client {client_id} disconnected")
 
+    def get_client(self, client_id: str) -> Optional[WebSocket]:
+        """Get a client connection by ID."""
+        return self.active_connections.get(client_id)
+
+    def get_pipecat(self, client_id: str) -> Optional[WebSocket]:
+        """Get a Pipecat connection by ID."""
+        return self.pipecat_connections.get(client_id)
+
+
+class ProtobufConverter:
+    """Handles conversion between raw audio and Protobuf frames."""
+
+    def __init__(self, logger=logger, sample_rate: int = 24000, channels: int = 1):
+        self.logger = logger
+        self.sample_rate = sample_rate
+        self.channels = channels
+
+    def raw_to_protobuf(self, raw_audio: bytes) -> bytes:
+        """Convert raw audio data to a serialized Protobuf frame."""
+        try:
+            frame = frames_pb2.Frame()
+            frame.audio.audio = raw_audio
+            frame.audio.sample_rate = self.sample_rate
+            frame.audio.num_channels = self.channels
+
+            return frame.SerializeToString()
+        except Exception as e:
+            self.logger.error(f"Error converting raw audio to Protobuf: {str(e)}")
+            raise
+
+    def protobuf_to_raw(self, proto_data: bytes) -> Optional[bytes]:
+        """Extract raw audio from a serialized Protobuf frame."""
+        try:
+            frame = frames_pb2.Frame()
+            frame.ParseFromString(proto_data)
+
+            if frame.HasField("audio"):
+                return bytes(frame.audio.audio)
+            return None
+        except Exception as e:
+            self.logger.error(f"Error extracting audio from Protobuf: {str(e)}")
+            return None
+
+
+class MessageRouter:
+    """Routes messages between clients and Pipecat."""
+
+    def __init__(
+        self, registry: ConnectionRegistry, converter: ProtobufConverter, logger=logger
+    ):
+        self.registry = registry
+        self.converter = converter
+        self.logger = logger
+
     async def send_binary(self, message: bytes, client_id: str):
-        """Send binary data to a client"""
-        if client_id in self.active_connections:
-            await self.active_connections[client_id].send_bytes(message)
+        """Send binary data to a client."""
+        client = self.registry.get_client(client_id)
+        if client:
+            await client.send_bytes(message)
             self.logger.debug(f"Sent {len(message)} bytes to client {client_id}")
 
-    async def send_to_pipecat(self, message: bytes, client_id: str):
-        """Convert raw audio to Protobuf frame and send to Pipecat"""
-        if client_id in self.pipecat_connections:
-            try:
-                # Create Protobuf frame for the audio data
-                frame = frames_pb2.Frame()
-                frame.audio.audio = message
-                frame.audio.sample_rate = self.sample_rate
-                frame.audio.num_channels = self.channels
+    async def send_text(self, message: str, client_id: str):
+        """Send text message to a specific client."""
+        client = self.registry.get_client(client_id)
+        if client:
+            await client.send_text(message)
+            self.logger.debug(
+                f"Sent text message to client {client_id}: {message[:100]}..."
+            )
 
-                # Serialize and send the frame
-                serialized_frame = frame.SerializeToString()
-                await self.pipecat_connections[client_id].send_bytes(serialized_frame)
+    async def broadcast(self, message: str):
+        """Broadcast text message to all clients."""
+        for client_id, connection in self.registry.active_connections.items():
+            await connection.send_text(message)
+            self.logger.debug(f"Broadcast text message to client {client_id}")
+
+    async def send_to_pipecat(self, message: bytes, client_id: str):
+        """Convert raw audio to Protobuf frame and send to Pipecat."""
+        pipecat = self.registry.get_pipecat(client_id)
+        if pipecat:
+            try:
+                serialized_frame = self.converter.raw_to_protobuf(message)
+                await pipecat.send_bytes(serialized_frame)
                 self.logger.debug(
                     f"Forwarded audio frame ({len(message)} bytes) to Pipecat for client {client_id}"
                 )
@@ -129,39 +208,18 @@ class ConnectionManager:
                 self.logger.error(f"Error sending to Pipecat: {str(e)}")
 
     async def send_from_pipecat(self, message: bytes, client_id: str):
-        """Extract audio from Protobuf frame and send to client"""
-        if client_id in self.active_connections:
+        """Extract audio from Protobuf frame and send to client."""
+        client = self.registry.get_client(client_id)
+        if client:
             try:
-                frame = frames_pb2.Frame()
-                frame.ParseFromString(message)
-                if frame.HasField("audio"):
-                    audio_data = frame.audio.audio
-                    audio_size = len(audio_data)
-                    await self.active_connections[client_id].send_bytes(
-                        bytes(audio_data)
-                    )
+                audio_data = self.converter.protobuf_to_raw(message)
+                if audio_data:
+                    await client.send_bytes(audio_data)
                     self.logger.debug(
-                        f"Forwarded audio ({audio_size} bytes) from Pipecat to client {client_id}"
+                        f"Forwarded audio ({len(audio_data)} bytes) from Pipecat to client {client_id}"
                     )
             except Exception as e:
                 self.logger.error(f"Error processing Pipecat message: {str(e)}")
-
-    async def send_text(self, message: str, client_id: str):
-        """Send text message to a specific client"""
-        if client_id in self.active_connections:
-            await self.active_connections[client_id].send_text(message)
-            self.logger.debug(
-                f"Sent text message to client {client_id}: {message[:100]}..."
-            )
-
-    async def broadcast(self, message: str):
-        """Broadcast text message to all clients"""
-        for client_id, connection in self.active_connections.items():
-            await connection.send_text(message)
-            self.logger.debug(f"Broadcast text message to client {client_id}")
-
-
-manager = ConnectionManager()
 
 
 class BotRequest(BaseModel):
@@ -276,10 +334,7 @@ def _get_next_ngrok_url(urls: List[str]) -> Optional[str]:
     NGROK_URL_INDEX += 1
 
     # Convert http to ws for WebSocket
-    if url.startswith("http://"):
-        url = "ws://" + url[7:]
-    elif url.startswith("https://"):
-        url = "wss://" + url[8:]
+    url = convert_http_to_ws_url(url)
 
     logger.info(f"✅ Assigned ngrok WebSocket URL: {url} (URL #{NGROK_URL_INDEX})")
     return url
@@ -419,12 +474,18 @@ async def run_bots(request: BotRequest, client_request: Request):
         )
 
 
+# Initialize components
+registry = ConnectionRegistry()
+converter = ProtobufConverter()
+router = MessageRouter(registry, converter)
+
+
 @app.websocket("/ws/{client_id}")
 async def websocket_endpoint(websocket: WebSocket, client_id: str):
     """Handle WebSocket connections from clients (MeetingBaas)"""
     logger.info(f"Received WebSocket connection attempt from client {client_id}")
     try:
-        await manager.connect(websocket, client_id)
+        await registry.connect(websocket, client_id)
         logger.info(f"WebSocket connection established with client {client_id}")
 
         # Track if we've already logged the first audio chunk
@@ -441,7 +502,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     )
                     first_audio_logged = True
                 # Forward binary data to Pipecat with conversion
-                await manager.send_to_pipecat(data, client_id)
+                await router.send_to_pipecat(data, client_id)
             elif "text" in message:
                 data = message["text"]
                 # Try to parse as JSON and pretty print speakers
@@ -475,19 +536,19 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                     )
 
                 # Handle text messages (could be control commands)
-                await manager.broadcast(f"Client {client_id} says: {data}")
+                await router.broadcast(f"Client {client_id} says: {data}")
     except WebSocketDisconnect:
         logger.warning(f"WebSocket disconnected for client {client_id}")
-        manager.disconnect(client_id)
+        registry.disconnect(client_id)
     except Exception as e:
         logger.error(f"Error in WebSocket handler: {str(e)}")
-        manager.disconnect(client_id)
+        registry.disconnect(client_id)
 
 
 @app.websocket("/pipecat/{client_id}")
 async def pipecat_websocket(websocket: WebSocket, client_id: str):
     """Handle WebSocket connections from Pipecat"""
-    await manager.connect(websocket, client_id, is_pipecat=True)
+    await registry.connect(websocket, client_id, is_pipecat=True)
     try:
         while True:
             message = await websocket.receive()
@@ -497,19 +558,19 @@ async def pipecat_websocket(websocket: WebSocket, client_id: str):
                     f"Received binary data ({len(data)} bytes) from Pipecat client {client_id}"
                 )
                 # Forward Pipecat messages to client with conversion
-                await manager.send_from_pipecat(data, client_id)
+                await router.send_from_pipecat(data, client_id)
             elif "text" in message:
                 data = message["text"]
                 logger.info(
                     f"Received text message from Pipecat client {client_id}: {data[:100]}..."
                 )
     except WebSocketDisconnect:
-        manager.disconnect(client_id, is_pipecat=True)
+        registry.disconnect(client_id, is_pipecat=True)
     except Exception as e:
         logger.error(
             f"Error in Pipecat WebSocket handler for client {client_id}: {str(e)}"
         )
-        manager.disconnect(client_id, is_pipecat=True)
+        registry.disconnect(client_id, is_pipecat=True)
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
