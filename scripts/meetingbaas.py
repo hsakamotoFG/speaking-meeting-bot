@@ -9,7 +9,7 @@ import pytz
 from dotenv import load_dotenv
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
 from pipecat.frames.frames import LLMMessagesFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
@@ -135,7 +135,16 @@ async def main(
             audio_out_enabled=True,
             add_wav_header=False,
             vad_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(sample_rate=vad_sample_rate),
+            vad_analyzer=SileroVADAnalyzer(
+                sample_rate=vad_sample_rate,
+                params=VADParams(
+                    threshold=0.6,  # Speech detection confidence (0.5-0.7 is a good range)
+                    min_speech_duration_ms=200,  # Lower value to detect shorter speech segments faster
+                    min_silence_duration_ms=400,  # Detect silence quicker to allow for interruptions
+                    speech_pad_ms=30,  # Add small padding before speech starts
+                    confidence=0.7,  # Lower this slightly from default (0.8) for faster response
+                ),
+            ),
             vad_audio_passthrough=True,
             serializer=ProtobufFrameSerializer(),
         ),
