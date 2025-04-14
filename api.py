@@ -295,16 +295,31 @@ class MessageRouter:
 
 
 class BotRequest(BaseModel):
+    """Request model for a bot joining a meeting, based on MeetingBaaS API"""
+
     meeting_url: str
+    bot_name: str = ""  # New field to store the name of the bot
     personas: Optional[List[str]] = None
     recorder_only: bool = False
-    websocket_url: Optional[str] = None  # Now optional in all cases
+    websocket_url: Optional[str] = None
     meeting_baas_api_key: str
-    bot_image: Optional[str] = None
+    bot_image: Optional[HttpUrl] = None
     entry_message: Optional[str] = None
-    extra: Optional[Dict] = None
-    streaming_audio_frequency: str = "24khz"  # Default to 24khz for higher quality
-    enable_tools: bool = True  # Default to True to enable function tools by default
+    extra: Optional[Dict[str, Any]] = None
+    streaming_audio_frequency: str = "24khz"
+    enable_tools: bool = True
+
+
+class JoinResponse(BaseModel):
+    """Response model for a bot joining a meeting"""
+
+    bot_id: str
+
+
+class LeaveResponse(BaseModel):
+    """Response model for a bot leaving a meeting"""
+
+    ok: bool
 
 
 class LeaveBotRequest(BaseModel):
@@ -483,11 +498,10 @@ def determine_websocket_url(
     return auto_url
 
 
-@app.post("/run-bots")
-async def run_bots(request: BotRequest, client_request: Request):
+@app.post("/bots")
+async def join_meeting(request: BotRequest, client_request: Request):
     """
-    Create a bot directly via MeetingBaas API and establish WebSocket connection.
-    The WebSocket URL is determined automatically if not provided.
+    Have a bot join a meeting, mirroring MeetingBaas API structure.
     """
     # Validate required parameters
     if not request.meeting_url:
@@ -513,7 +527,7 @@ async def run_bots(request: BotRequest, client_request: Request):
 
     logger.info(f"Starting bot for meeting {request.meeting_url}")
     logger.info(f"WebSocket URL: {websocket_url}")
-    logger.info(f"Personas: {request.personas}")
+    logger.info(f"Bot name: {request.bot_name}")
 
     # Generate a unique client ID for this bot
     bot_client_id = str(uuid.uuid4())
@@ -523,23 +537,41 @@ async def run_bots(request: BotRequest, client_request: Request):
         persona_name = request.personas[0]
         logger.info(f"Using specified persona: {persona_name}")
     else:
-        # Get all available personas
-        available_personas = list(persona_manager.personas.keys())
-        if not available_personas:
-            # Fallback to baas_onboarder if we somehow can't get the personas list
-            persona_name = "baas_onboarder"
-            logger.warning("No personas found, using fallback persona: baas_onboarder")
-        else:
-            # Select a random persona
-            persona_name = random.choice(available_personas)
-            logger.info(f"Randomly selected persona: {persona_name}")
+        # Use the bot_name as the persona name if no personas are specified
+        persona_name = request.bot_name
+        logger.info(f"Using bot_name as persona: {persona_name}")
+
+        # If the persona doesn't exist, try to use a random one
+        if persona_name not in persona_manager.personas:
+            available_personas = list(persona_manager.personas.keys())
+            if available_personas:
+                persona_name = random.choice(available_personas)
+                logger.info(f"Persona not found, using random persona: {persona_name}")
+            else:
+                # Fallback to baas_onboarder if we somehow can't get the personas list
+                persona_name = "baas_onboarder"
+                logger.warning(
+                    "No personas found, using fallback persona: baas_onboarder"
+                )
+
+    # Get streaming audio frequency from request
+    streaming_audio_frequency = request.streaming_audio_frequency
+
+    # Update the converter's sample rate to match the streaming audio frequency
+    sample_rate = 24000 if streaming_audio_frequency == "24khz" else 16000
+    converter.set_sample_rate(sample_rate)
+    logger.info(
+        f"Set audio sample rate to {sample_rate} Hz for {streaming_audio_frequency}"
+    )
 
     # Store meeting details for when the WebSocket connects
+    # Also store streaming_audio_frequency
     MEETING_DETAILS[bot_client_id] = (
         request.meeting_url,
         persona_name,
         None,  # MeetingBaas bot ID will be set after creation
         request.enable_tools,
+        streaming_audio_frequency,
     )
 
     # Create bot directly through MeetingBaas API
@@ -550,47 +582,24 @@ async def run_bots(request: BotRequest, client_request: Request):
         persona_name=persona_name,
         api_key=request.meeting_baas_api_key,
         recorder_only=request.recorder_only,
-        bot_image=request.bot_image,
+        bot_image=str(request.bot_image) if request.bot_image else None,
         entry_message=request.entry_message,
         extra=request.extra,
-        streaming_audio_frequency=request.streaming_audio_frequency,
+        streaming_audio_frequency=streaming_audio_frequency,
     )
 
     if meetingbaas_bot_id:
-        # Start the Pipecat process for this bot
-        pipecat_websocket_url = f"ws://localhost:8766/pipecat/{bot_client_id}"
-
-        # Update the converter's sample rate to match the streaming audio frequency
-        sample_rate = 24000 if request.streaming_audio_frequency == "24khz" else 16000
-        converter.set_sample_rate(sample_rate)
-        logger.info(
-            f"Set audio sample rate to {sample_rate} Hz for {request.streaming_audio_frequency}"
-        )
-
-        process = start_pipecat_process(
-            client_id=bot_client_id,
-            websocket_url=pipecat_websocket_url,
-            meeting_url=request.meeting_url,
-            persona_name=persona_name,
-            streaming_audio_frequency=request.streaming_audio_frequency,
-            enable_tools=request.enable_tools,
-        )
-
-        # Store the meetingbaas_bot_id in MEETING_DETAILS
+        # Update the meetingbaas_bot_id in MEETING_DETAILS
         MEETING_DETAILS[bot_client_id] = (
             request.meeting_url,
             persona_name,
             meetingbaas_bot_id,
             request.enable_tools,
+            streaming_audio_frequency,
         )
 
-        return {
-            "message": f"Bot successfully created for meeting {request.meeting_url}",
-            "status": "success",
-            "websocket_url": websocket_url,
-            "bot_id": meetingbaas_bot_id,
-            "client_id": bot_client_id,
-        }
+        # Return a response that matches MeetingBaas API format
+        return JoinResponse(bot_id=meetingbaas_bot_id)
     else:
         return JSONResponse(
             content={
@@ -771,28 +780,46 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             await websocket.close(code=1008, reason="Missing meeting details")
             return
 
-        meeting_url, persona_name, meetingbaas_bot_id, enable_tools = MEETING_DETAILS[
-            client_id
-        ]
+        # Get stored meeting details
+        if len(MEETING_DETAILS[client_id]) >= 5:
+            (
+                meeting_url,
+                persona_name,
+                meetingbaas_bot_id,
+                enable_tools,
+                streaming_audio_frequency,
+            ) = MEETING_DETAILS[client_id]
+        else:
+            # Handle older format for backward compatibility
+            meeting_url, persona_name, meetingbaas_bot_id, enable_tools = (
+                MEETING_DETAILS[client_id]
+            )
+            streaming_audio_frequency = "24khz"  # Default
+
         logger.info(
-            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}, {enable_tools}"
+            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}, {enable_tools}, {streaming_audio_frequency}"
         )
 
-        # Start Pipecat process
-        pipecat_websocket_url = f"ws://localhost:8766/pipecat/{client_id}"
-        process = start_pipecat_process(
-            client_id=client_id,
-            websocket_url=pipecat_websocket_url,
-            meeting_url=meeting_url,
-            persona_name=persona_name,
-            # Use default streaming_audio_frequency and enable_tools
-            # These values could be stored in MEETING_DETAILS in the future if needed
-            streaming_audio_frequency="24khz",
-            enable_tools=enable_tools,
-        )
+        # Check if a Pipecat process is already running for this client
+        if (
+            client_id in PIPECAT_PROCESSES
+            and PIPECAT_PROCESSES[client_id].poll() is None
+        ):
+            logger.info(f"Pipecat process already running for client {client_id}")
+        else:
+            # Start Pipecat process if not already running
+            pipecat_websocket_url = f"ws://localhost:8766/pipecat/{client_id}"
+            process = start_pipecat_process(
+                client_id=client_id,
+                websocket_url=pipecat_websocket_url,
+                meeting_url=meeting_url,
+                persona_name=persona_name,
+                streaming_audio_frequency=streaming_audio_frequency,
+                enable_tools=enable_tools,
+            )
 
-        # Store the process for cleanup
-        PIPECAT_PROCESSES[client_id] = process
+            # Store the process for cleanup
+            PIPECAT_PROCESSES[client_id] = process
 
         # Process messages
         while True:
@@ -868,35 +895,25 @@ def start_pipecat_process(
     websocket_url: str,
     meeting_url: str,
     persona_name: str,
-    speak_first: bool = False,
     streaming_audio_frequency: str = "24khz",
     enable_tools: bool = False,
+    recorder_only: bool = False,
 ) -> subprocess.Popen:
-    """Start a Pipecat process for a client.
-
-    Args:
-        client_id: Unique ID for the client
-        websocket_url: WebSocket URL for the Pipecat process to connect to
-        meeting_url: URL of the meeting to join
-        persona_name: Name of the persona to use
-        speak_first: Whether the bot should speak first (deprecated)
-        streaming_audio_frequency: The streaming audio frequency
-        enable_tools: Whether to enable function tools like weather and time
-
-    Returns:
-        The started process object
-    """
+    """Start a Pipecat process for a client."""
     logger.info(f"Starting Pipecat process for client {client_id}")
 
     # Construct the command to run the meetingbaas.py script
     script_path = os.path.join(os.path.dirname(__file__), "scripts", "meetingbaas.py")
 
-    # Convert speak_first to entry_message if needed
-    entry_message = (
-        "Hello, I am here to assist with the meeting."
-        if speak_first
-        else "Hello, I am the meeting bot"
-    )
+    # Get the persona's custom entry message
+    persona = persona_manager.get_persona(persona_name)
+
+    # Use the persona's entry_message if available
+    entry_message = persona.get("entry_message", "")
+    if not entry_message:
+        entry_message = (
+            "Hello, I am a Speaking Bot by MeetingBaas - Meeting Bot as a Service."
+        )
 
     # Build command with all parameters
     command = [
@@ -918,7 +935,10 @@ def start_pipecat_process(
     if enable_tools:
         command.append("--enable-tools")
 
-    # Start the process with updated arguments matching the new script interface
+    if recorder_only:
+        command.append("--recorder-only")
+
+    # Start the process
     process = subprocess.Popen(
         command,
         env=os.environ.copy(),  # Copy the current environment
