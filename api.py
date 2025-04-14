@@ -303,7 +303,7 @@ class BotRequest(BaseModel):
     recorder_only: bool = False
     websocket_url: Optional[str] = None
     meeting_baas_api_key: str
-    bot_image: Optional[HttpUrl] = None
+    bot_image: Optional[str] = None  # Change from HttpUrl to str
     entry_message: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
     streaming_audio_frequency: str = "24khz"
@@ -554,6 +554,9 @@ async def join_meeting(request: BotRequest, client_request: Request):
                     "No personas found, using fallback persona: baas_onboarder"
                 )
 
+    # Get the persona data
+    persona = persona_manager.get_persona(persona_name)
+
     # Get streaming audio frequency from request
     streaming_audio_frequency = request.streaming_audio_frequency
 
@@ -574,15 +577,21 @@ async def join_meeting(request: BotRequest, client_request: Request):
         streaming_audio_frequency,
     )
 
+    # Get image from persona if not specified in request
+    bot_image = request.bot_image
+    if not bot_image and persona.get("image"):
+        bot_image = persona.get("image")
+        logger.info(f"Using persona image: {bot_image}")
+
     # Create bot directly through MeetingBaas API
     meetingbaas_bot_id = create_meeting_bot(
         meeting_url=request.meeting_url,
         websocket_url=websocket_url,
         bot_id=bot_client_id,
-        persona_name=persona_name,
+        persona_name=persona.get("name", persona_name),  # Use persona display name
         api_key=request.meeting_baas_api_key,
         recorder_only=request.recorder_only,
-        bot_image=str(request.bot_image) if request.bot_image else None,
+        bot_image=bot_image,  # Pass the bot_image directly, no conversion needed
         entry_message=request.entry_message,
         extra=request.extra,
         streaming_audio_frequency=streaming_audio_frequency,
