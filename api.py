@@ -84,7 +84,18 @@ else:
     )
     WS_BASE_URL = None
 
-app = FastAPI()
+app = FastAPI(
+    title="Speaking Meeting Bot API",
+    description="API for deploying AI-powered speaking agents in video meetings. Combines MeetingBaas for meeting connectivity with Pipecat for voice AI processing.",
+    version="1.0.0",
+    contact={
+        "name": "Speaking Meeting Bot Team",
+        "url": "https://github.com/yourusername/speaking-meeting-bot",
+    },
+    openapi_url="/openapi.json",  # Explicitly set the OpenAPI schema URL
+    docs_url="/docs",  # Explicitly set the Swagger UI URL
+    redoc_url="/redoc",  # Explicitly set the ReDoc URL
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -295,19 +306,40 @@ class MessageRouter:
 
 
 class BotRequest(BaseModel):
-    """Request model for a bot joining a meeting, based on MeetingBaaS API"""
+    """Request model for creating a speaking bot in a meeting."""
 
-    meeting_url: str
-    bot_name: str = ""  # New field to store the name of the bot
-    personas: Optional[List[str]] = None
-    recorder_only: bool = False
+    # Define ONLY the fields we want in our API
+    meeting_url: str = Field(
+        ...,
+        description="URL of the Google Meet, Zoom or Microsoft Teams meeting to join",
+    )
+    bot_name: str = Field("", description="Name to display for the bot in the meeting")
+    personas: Optional[List[str]] = Field(
+        None,
+        description="List of persona names to use. The first available will be selected.",
+    )
+    recorder_only: bool = Field(
+        False, description="If true, bot will only record meeting without speaking"
+    )
     websocket_url: Optional[str] = None
     meeting_baas_api_key: str
-    bot_image: Optional[str] = None  # Change from HttpUrl to str
+    bot_image: Optional[str] = None
     entry_message: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
-    streaming_audio_frequency: str = "24khz"
     enable_tools: bool = True
+
+    # NOTE: streaming_audio_frequency is intentionally excluded and handled internally
+
+    class Config:
+        schema_extra = {
+            "example": {
+                "meeting_url": "https://meet.google.com/abc-defg-hij",
+                "bot_name": "Assistant Bot",
+                "personas": ["helpful_assistant", "meeting_facilitator"],
+                "meeting_baas_api_key": "your-api-key",
+                "enable_tools": True,
+            }
+        }
 
 
 class JoinResponse(BaseModel):
@@ -498,10 +530,13 @@ def determine_websocket_url(
     return auto_url
 
 
-@app.post("/bots")
+@app.post("/bots", tags=["Bots"])
 async def join_meeting(request: BotRequest, client_request: Request):
     """
-    Have a bot join a meeting, mirroring MeetingBaas API structure.
+    Create and deploy a speaking bot in a meeting.
+
+    Launches an AI-powered bot that joins a video meeting through MeetingBaas
+    and processes audio using Pipecat's voice AI framework.
     """
     # Validate required parameters
     if not request.meeting_url:
@@ -528,6 +563,18 @@ async def join_meeting(request: BotRequest, client_request: Request):
     logger.info(f"Starting bot for meeting {request.meeting_url}")
     logger.info(f"WebSocket URL: {websocket_url}")
     logger.info(f"Bot name: {request.bot_name}")
+
+    # INTERNAL PARAMETER: Set a fixed value for streaming_audio_frequency
+    # This is not exposed in the API and is always "24khz"
+    streaming_audio_frequency = "24khz"
+    logger.info(f"Using fixed streaming audio frequency: {streaming_audio_frequency}")
+
+    # Set the converter sample rate based on our fixed streaming_audio_frequency
+    sample_rate = 24000  # Always 24000 Hz for 24khz audio
+    converter.set_sample_rate(sample_rate)
+    logger.info(
+        f"Set audio sample rate to {sample_rate} Hz for {streaming_audio_frequency}"
+    )
 
     # Generate a unique client ID for this bot
     bot_client_id = str(uuid.uuid4())
@@ -556,16 +603,6 @@ async def join_meeting(request: BotRequest, client_request: Request):
 
     # Get the persona data
     persona = persona_manager.get_persona(persona_name)
-
-    # Get streaming audio frequency from request
-    streaming_audio_frequency = request.streaming_audio_frequency
-
-    # Update the converter's sample rate to match the streaming audio frequency
-    sample_rate = 24000 if streaming_audio_frequency == "24khz" else 16000
-    converter.set_sample_rate(sample_rate)
-    logger.info(
-        f"Set audio sample rate to {sample_rate} Hz for {streaming_audio_frequency}"
-    )
 
     # Store meeting details for when the WebSocket connects
     # Also store streaming_audio_frequency
