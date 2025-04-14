@@ -908,12 +908,8 @@ def start_pipecat_process(
     # Get the persona's custom entry message
     persona = persona_manager.get_persona(persona_name)
 
-    # Use the persona's entry_message if available
-    entry_message = persona.get("entry_message", "")
-    if not entry_message:
-        entry_message = (
-            "Hello, I am a Speaking Bot by MeetingBaas - Meeting Bot as a Service."
-        )
+    # Use the persona's display name (from README) instead of folder name
+    display_name = persona.get("name", persona_name)
 
     # Build command with all parameters
     command = [
@@ -922,9 +918,9 @@ def start_pipecat_process(
         "--meeting-url",
         meeting_url,
         "--persona-name",
-        persona_name,
+        display_name,
         "--entry-message",
-        entry_message,
+        persona.get("entry_message", ""),
         "--websocket-url",
         websocket_url,
         "--streaming-audio-frequency",
