@@ -580,8 +580,25 @@ async def join_meeting(request: BotRequest, client_request: Request):
     # Get image from persona if not specified in request
     bot_image = request.bot_image
     if not bot_image and persona.get("image"):
-        bot_image = persona.get("image")
-        logger.info(f"Using persona image: {bot_image}")
+        # Ensure the image is a string
+        try:
+            # Convert to string no matter what type it is
+            bot_image = str(persona.get("image"))
+            logger.info(f"Using persona image: {bot_image}")
+        except Exception as e:
+            logger.error(f"Error converting persona image to string: {e}")
+            bot_image = None
+
+    # Ensure the bot_image is definitely a string or None
+    if bot_image is not None:
+        try:
+            bot_image_str = str(bot_image)
+            logger.info(f"Final bot image URL: {bot_image_str}")
+        except Exception as e:
+            logger.error(f"Failed to convert bot image to string: {e}")
+            bot_image_str = None
+    else:
+        bot_image_str = None
 
     # Create bot directly through MeetingBaas API
     meetingbaas_bot_id = create_meeting_bot(
@@ -591,7 +608,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
         persona_name=persona.get("name", persona_name),  # Use persona display name
         api_key=request.meeting_baas_api_key,
         recorder_only=request.recorder_only,
-        bot_image=bot_image,  # Pass the bot_image directly, no conversion needed
+        bot_image=bot_image_str,  # Use the pre-stringified value
         entry_message=request.entry_message,
         extra=request.extra,
         streaming_audio_frequency=streaming_audio_frequency,

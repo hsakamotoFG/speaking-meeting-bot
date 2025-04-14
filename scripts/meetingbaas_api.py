@@ -1,3 +1,4 @@
+import json
 import logging
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
@@ -94,6 +95,10 @@ def create_meeting_bot(
     Returns:
         str: The bot ID if successful, None otherwise
     """
+    # Ensure all inputs are primitive types to avoid serialization issues
+    if bot_image is not None:
+        bot_image = str(bot_image)  # Ensure bot_image is a string
+
     # Create the WebSocket path for streaming
     websocket_with_path = f"{websocket_url}/ws/{bot_id}"
 
@@ -120,8 +125,34 @@ def create_meeting_bot(
     if recorder_only:
         request.speech_to_text = SpeechToText(provider="Default")
 
-    # Convert request to dict for the API call
-    config = request.model_dump(exclude_none=True)
+    # Convert request to dict for the API call with custom handler for non-serializable types
+    try:
+        # First try the normal approach
+        config = request.model_dump(exclude_none=True)
+    except Exception as e:
+        logger.warning(f"Error in model_dump: {e}, trying manual conversion")
+        # Fall back to manual conversion if that fails
+        config = {
+            "meeting_url": meeting_url,
+            "bot_name": persona_name,
+            "reserved": False,
+            "deduplication_key": f"{persona_name}-BaaS-{bot_id}",
+            "streaming": {
+                "input": websocket_with_path,
+                "output": websocket_with_path,
+                "audio_frequency": streaming_audio_frequency,
+            },
+        }
+
+        # Add optional fields
+        if bot_image:
+            config["bot_image"] = str(bot_image)
+        if entry_message:
+            config["entry_message"] = entry_message
+        if extra:
+            config["extra"] = extra
+        if recorder_only:
+            config["speech_to_text"] = {"provider": "Default"}
 
     url = "https://api.meetingbaas.com/bots"
     headers = {
@@ -132,6 +163,25 @@ def create_meeting_bot(
     try:
         logger.info(f"Creating MeetingBaas bot for {meeting_url}")
         logger.debug(f"Request payload: {config}")
+
+        # Try to serialize the payload to catch any JSON serialization issues
+        try:
+            json.dumps(config)
+        except TypeError as e:
+            logger.error(f"JSON serialization error: {e}")
+            # Try to fix the config by converting problematic values to strings
+            for key, value in list(config.items()):
+                if not isinstance(
+                    value, (str, int, float, bool, list, dict, type(None))
+                ):
+                    config[key] = str(value)
+            # Also check nested dictionaries
+            if "streaming" in config and isinstance(config["streaming"], dict):
+                for key, value in list(config["streaming"].items()):
+                    if not isinstance(
+                        value, (str, int, float, bool, list, dict, type(None))
+                    ):
+                        config["streaming"][key] = str(value)
 
         response = requests.post(url, json=config, headers=headers)
 
