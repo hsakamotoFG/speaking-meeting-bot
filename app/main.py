@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
             "url": "https://meetingbaas.com",
         },
         openapi_url="/openapi.json",  # Explicitly set the OpenAPI schema URL
-        docs_url="https://docs.meetingbaas.com",  # Explicitly set the Swagger UI URL
+        docs_url="/docs",  # Swagger UI path
         # redoc_url="/redoc",  # Explicitly set the ReDoc URL
     )
 
