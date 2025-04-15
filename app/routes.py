@@ -75,14 +75,14 @@ async def join_meeting(request: BotRequest, client_request: Request):
     logger.info(f"Bot name: {request.bot_name}")
 
     # INTERNAL PARAMETER: Set a fixed value for streaming_audio_frequency
-    # This is not exposed in the API and is always "24khz"
-    streaming_audio_frequency = "24khz"
+    # This is not exposed in the API and is always "16khz"
+    streaming_audio_frequency = "16khz"
     logger.info(f"Using fixed streaming audio frequency: {streaming_audio_frequency}")
 
     # Set the converter sample rate based on our fixed streaming_audio_frequency
     from core.converter import converter
 
-    sample_rate = 24000  # Always 24000 Hz for 24khz audio
+    sample_rate = 16000  # Always 16000 Hz for 16khz audio
     converter.set_sample_rate(sample_rate)
     logger.info(
         f"Set audio sample rate to {sample_rate} Hz for {streaming_audio_frequency}"

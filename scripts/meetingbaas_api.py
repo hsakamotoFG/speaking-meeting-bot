@@ -95,7 +95,7 @@ def create_meeting_bot(
     bot_image: Optional[str] = None,
     entry_message: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
-    streaming_audio_frequency: str = "24khz",
+    streaming_audio_frequency: str = "16khz",
 ):
     """
     Direct API call to MeetingBaas to create a bot

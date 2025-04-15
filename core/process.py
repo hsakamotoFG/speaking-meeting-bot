@@ -15,7 +15,7 @@ def start_pipecat_process(
     websocket_url: str,
     meeting_url: str,
     persona_name: str,
-    streaming_audio_frequency: str = "24khz",
+    streaming_audio_frequency: str = "16khz",
     enable_tools: bool = False,
 ) -> subprocess.Popen:
     """

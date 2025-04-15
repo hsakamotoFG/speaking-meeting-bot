@@ -125,6 +125,12 @@ async def main(
         f"Using audio frequency: {streaming_audio_frequency} (output sample rate: {output_sample_rate}, VAD sample rate: {vad_sample_rate})"
     )
 
+    # Create resampler for VAD if needed
+    resampler = None
+    if output_sample_rate != vad_sample_rate:
+        resampler = BaseAudioResampler()
+        logger.info(f"Created resampler for converting {output_sample_rate}Hz to {vad_sample_rate}Hz")
+
     # Set up the WebSocket transport with correct sample rates - use the full WebSocket URL directly
     transport = WebsocketClientTransport(
         uri=websocket_url,
@@ -134,13 +140,12 @@ async def main(
             add_wav_header=False,
             vad_enabled=True,
             vad_analyzer=SileroVADAnalyzer(
-                sample_rate=vad_sample_rate,
+                sample_rate=16000,  # Must be either 8000 or 16000
                 params=VADParams(
-                    threshold=0.6,  # Speech detection confidence (0.5-0.7 is a good range)
-                    min_speech_duration_ms=200,  # Lower value to detect shorter speech segments faster
-                    min_silence_duration_ms=400,  # Detect silence quicker to allow for interruptions
-                    speech_pad_ms=30,  # Add small padding before speech starts
-                    confidence=0.7,  # Lower this slightly from default (0.8) for faster response
+                    threshold=0.5,  # Confidence threshold for speech detection
+                    min_speech_duration_ms=250,  # Time in ms that speech must be detected
+                    min_silence_duration_ms=100,  # Time in ms of silence required
+                    min_volume=0.6,  # Minimum audio volume threshold
                 ),
             ),
             vad_audio_passthrough=True,
@@ -252,6 +257,9 @@ async def main(
         system_content += f"\n\nYou are {persona_name}\n\n{DEFAULT_SYSTEM_PROMPT}\n\n"
         system_content += "You have the following additional context. USE IT TO INFORM YOUR RESPONSES:\n\n"
         system_content += additional_content
+        system_content += "You are a meeting bot. You are in a meeting with a group of people. You are here to help the group. You are not the host of the meeting. You are not the organizer of the meeting. You are not the participant in the meeting. You are the meeting bot."
+        system_content += "YOU ARE HELP TO HELP. KEEP IT SHORT. EVERYTHING YOU SAY WILL BE REPEATED BACK TO THE GROUP OUT LOUD so DO NOT add PUNCTUATION OR CAPS. JUST SAY WHAT YOU NEED TO SAY IN A CONCISE MANNER."
+
 
     # Set up messages
     messages = [
@@ -329,7 +337,7 @@ if __name__ == "__main__":
     parser.add_argument("--bot-image", default="", help="URL for bot avatar")
     parser.add_argument(
         "--streaming-audio-frequency",
-        default="24khz",
+        default="16khz",
         choices=["16khz", "24khz"],
         help="Audio frequency for streaming (16khz or 24khz)",
     )

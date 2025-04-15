@@ -33,9 +33,9 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         meetingbaas_bot_id = meeting_details[2] if len(meeting_details) > 2 else None
         enable_tools = meeting_details[3] if len(meeting_details) > 3 else False
 
-        # Default to 24khz if not specified
+        # Default to 16khz if not specified
         streaming_audio_frequency = (
-            meeting_details[4] if len(meeting_details) > 4 else "24khz"
+            meeting_details[4] if len(meeting_details) > 4 else "16khz"
         )
 
         logger.info(
