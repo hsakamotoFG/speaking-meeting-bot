@@ -9,8 +9,8 @@ from meetingbaas_pipecat.utils.logger import logger
 
 # Global dictionary to store meeting details for each client
 MEETING_DETAILS: Dict[
-    str, Tuple[str, str, Optional[str], bool, str, bool]
-] = {}  # client_id -> (meeting_url, persona_name, meetingbaas_bot_id, enable_tools, streaming_audio_frequency, recorder_only)
+    str, Tuple[str, str, Optional[str], bool, str]
+] = {}  # client_id -> (meeting_url, persona_name, meetingbaas_bot_id, enable_tools, streaming_audio_frequency)
 
 # Global dictionary to store Pipecat processes
 PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}  # client_id -> process

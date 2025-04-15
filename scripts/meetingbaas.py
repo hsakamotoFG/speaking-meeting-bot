@@ -83,11 +83,10 @@ async def main(
     meeting_url: str = "",
     persona_name: str = "Meeting Bot",
     entry_message: str = "Hello, I am the meeting bot",
-    recorder_only: bool = False,
     bot_image: str = "",
     streaming_audio_frequency: str = "24khz",
     websocket_url: str = "",
-    enable_tools: bool = True,  # New parameter for enabling/disabling tools
+    enable_tools: bool = True,
 ):
     """
     Run the MeetingBaas bot with specified configurations
@@ -96,7 +95,6 @@ async def main(
         meeting_url: URL to join the meeting
         persona_name: Name to display for the bot
         entry_message: Message to send when joining
-        recorder_only: Whether to only record (no STT processing)
         bot_image: URL for bot avatar
         streaming_audio_frequency: Audio frequency for streaming (16khz or 24khz)
         websocket_url: Full WebSocket URL to connect to, including any path
@@ -328,11 +326,6 @@ if __name__ == "__main__":
         default="Hello, I am the meeting bot",
         help="Message to send when joining",
     )
-    parser.add_argument(
-        "--recorder-only",
-        action="store_true",
-        help="Bot only records (no STT processing)",
-    )
     parser.add_argument("--bot-image", default="", help="URL for bot avatar")
     parser.add_argument(
         "--streaming-audio-frequency",
@@ -357,7 +350,6 @@ if __name__ == "__main__":
             meeting_url=args.meeting_url,
             persona_name=args.persona_name,
             entry_message=args.entry_message,
-            recorder_only=args.recorder_only,
             bot_image=args.bot_image,
             streaming_audio_frequency=args.streaming_audio_frequency,
             websocket_url=args.websocket_url,

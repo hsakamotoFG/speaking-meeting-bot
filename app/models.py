@@ -18,10 +18,6 @@ class BotRequest(BaseModel):
         None,
         description="List of persona names to use. The first available will be selected.",
     )
-    recorder_only: bool = Field(
-        False, description="If true, bot will only record meeting without speaking"
-    )
-    websocket_url: Optional[str] = None
     meeting_baas_api_key: str
     bot_image: Optional[str] = None
     entry_message: Optional[str] = None
@@ -37,7 +33,6 @@ class BotRequest(BaseModel):
                 "bot_name": "Meeting Assistant",
                 "personas": ["helpful_assistant", "meeting_facilitator"],
                 "meeting_baas_api_key": "mb_api_xxxxxxxxxxxxxxxxxxxxxxxx",
-                "recorder_only": False,
                 "bot_image": "https://example.com/bot-avatar.png",
                 "entry_message": "Hello! I'm here to assist with the meeting.",
                 "enable_tools": True,
@@ -53,10 +48,6 @@ class JoinResponse(BaseModel):
         ...,
         description="The MeetingBaas bot ID used for API operations with MeetingBaas",
     )
-    client_id: str = Field(
-        ...,
-        description="A unique UUID for this bot instance used for WebSocket connections",
-    )
 
 
 class LeaveResponse(BaseModel):
@@ -71,10 +62,7 @@ class LeaveBotRequest(BaseModel):
     meeting_baas_api_key: str = Field(
         ..., description="Your MeetingBaas API key for authentication"
     )
-    client_id: Optional[str] = Field(
-        None,
-        description="The client UUID to identify which bot WebSocket connection to close",
-    )
     bot_id: Optional[str] = Field(
-        None, description="The MeetingBaas bot ID to remove from the meeting"
+        None,
+        description="The MeetingBaas bot ID to remove from the meeting. This will also close the WebSocket connection made through Pipecat by this bot.",
     )

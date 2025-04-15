@@ -92,7 +92,6 @@ def create_meeting_bot(
     bot_id: str,
     persona_name: str,
     api_key: str,
-    recorder_only: bool = False,
     bot_image: Optional[str] = None,
     entry_message: Optional[str] = None,
     extra: Optional[Dict[str, Any]] = None,
@@ -107,7 +106,6 @@ def create_meeting_bot(
         bot_id: Unique identifier for the bot
         persona_name: Name to display for the bot
         api_key: MeetingBaas API key
-        recorder_only: Whether the bot should only record (no STT processing)
         bot_image: Optional URL for bot avatar
         entry_message: Optional message to send when joining
         extra: Optional additional metadata for the bot
@@ -142,10 +140,6 @@ def create_meeting_bot(
         extra=extra,
     )
 
-    # Add speech-to-text configuration if recorder-only mode
-    if recorder_only:
-        request.speech_to_text = SpeechToText(provider="Default")
-
     # Convert request to dict for the API call with custom handler for non-serializable types
     try:
         # First try the normal approach
@@ -174,8 +168,6 @@ def create_meeting_bot(
             config["entry_message"] = entry_message
         if extra:
             config["extra"] = extra
-        if recorder_only:
-            config["speech_to_text"] = {"provider": "Default"}
 
         # Ensure all values are serializable
         config = stringify_values(config)

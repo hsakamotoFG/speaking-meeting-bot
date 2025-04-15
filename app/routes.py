@@ -126,14 +126,13 @@ async def join_meeting(request: BotRequest, client_request: Request):
     persona = persona_manager.get_persona(persona_name)
 
     # Store meeting details for when the WebSocket connects
-    # Also store streaming_audio_frequency and recorder_only
+    # Also store streaming_audio_frequency
     MEETING_DETAILS[bot_client_id] = (
         request.meeting_url,
         persona_name,
         None,  # MeetingBaas bot ID will be set after creation
         request.enable_tools,
         streaming_audio_frequency,
-        request.recorder_only,  # Add recorder_only parameter
     )
 
     # Get image from persona if not specified in request
@@ -166,7 +165,6 @@ async def join_meeting(request: BotRequest, client_request: Request):
         bot_id=bot_client_id,
         persona_name=persona.get("name", persona_name),  # Use persona display name
         api_key=request.meeting_baas_api_key,
-        recorder_only=request.recorder_only,
         bot_image=bot_image_str,  # Use the pre-stringified value
         entry_message=request.entry_message,
         extra=request.extra,
@@ -181,7 +179,6 @@ async def join_meeting(request: BotRequest, client_request: Request):
             meetingbaas_bot_id,
             request.enable_tools,
             streaming_audio_frequency,
-            request.recorder_only,  # Add recorder_only parameter
         )
 
         # Return a response that matches MeetingBaas API format

@@ -38,11 +38,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             meeting_details[4] if len(meeting_details) > 4 else "24khz"
         )
 
-        # Default to False if recorder_only not specified
-        recorder_only = meeting_details[5] if len(meeting_details) > 5 else False
-
         logger.info(
-            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}, {enable_tools}, {streaming_audio_frequency}, recorder_only={recorder_only}"
+            f"Retrieved meeting details for {client_id}: {meeting_url}, {persona_name}, {meetingbaas_bot_id}, {enable_tools}, {streaming_audio_frequency}"
         )
 
         # Check if a Pipecat process is already running for this client
@@ -61,7 +58,6 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 persona_name=persona_name,
                 streaming_audio_frequency=streaming_audio_frequency,
                 enable_tools=enable_tools,
-                recorder_only=recorder_only,
             )
 
             # Store the process for cleanup

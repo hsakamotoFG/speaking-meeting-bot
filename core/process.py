@@ -17,7 +17,6 @@ def start_pipecat_process(
     persona_name: str,
     streaming_audio_frequency: str = "24khz",
     enable_tools: bool = False,
-    recorder_only: bool = False,
 ) -> subprocess.Popen:
     """
     Start a Pipecat process for a client.
@@ -29,7 +28,6 @@ def start_pipecat_process(
         persona_name: Name of the persona to use
         streaming_audio_frequency: Audio sampling frequency
         enable_tools: Whether to enable function calling tools
-        recorder_only: If true, bot will only record without speaking
 
     Returns:
         The subprocess.Popen object for the started process
@@ -66,9 +64,6 @@ def start_pipecat_process(
     # Add optional flags
     if enable_tools:
         command.append("--enable-tools")
-
-    if recorder_only:
-        command.append("--recorder-only")
 
     # Start the process
     process = subprocess.Popen(
