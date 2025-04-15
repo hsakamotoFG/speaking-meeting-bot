@@ -44,6 +44,7 @@ def terminate_process_gracefully(
         # Try one last time with kill
         try:
             process.kill()
-        except:
+        except Exception as e:
+            logger.error(f"Final kill attempt failed: {e}")
             pass
         return False
