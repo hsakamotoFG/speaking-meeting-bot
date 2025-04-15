@@ -39,6 +39,27 @@ class Streaming(BaseModel):
     audio_frequency: str = "16khz"
 
 
+def stringify_values(obj: Any) -> Any:
+    """
+    Recursively convert any values that might cause JSON serialization issues to strings.
+
+    Args:
+        obj: Any Python object to stringify
+
+    Returns:
+        The object with all non-serializable values converted to strings
+    """
+    if isinstance(obj, dict):
+        return {k: stringify_values(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [stringify_values(item) for item in obj]
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    else:
+        # For any other type, convert to string
+        return str(obj)
+
+
 class MeetingBaasRequest(BaseModel):
     """
     Complete model for MeetingBaas API request
@@ -56,7 +77,7 @@ class MeetingBaasRequest(BaseModel):
     recording_mode: RecordingMode = RecordingMode.SPEAKER_VIEW
 
     # Optional fields
-    bot_image: Optional[HttpUrl] = None
+    bot_image: Optional[str] = None  # Changed from HttpUrl to str
     deduplication_key: Optional[str] = None
     entry_message: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
@@ -129,6 +150,8 @@ def create_meeting_bot(
     try:
         # First try the normal approach
         config = request.model_dump(exclude_none=True)
+        # Make sure all values are serializable
+        config = stringify_values(config)
     except Exception as e:
         logger.warning(f"Error in model_dump: {e}, trying manual conversion")
         # Fall back to manual conversion if that fails
@@ -154,6 +177,9 @@ def create_meeting_bot(
         if recorder_only:
             config["speech_to_text"] = {"provider": "Default"}
 
+        # Ensure all values are serializable
+        config = stringify_values(config)
+
     url = "https://api.meetingbaas.com/bots"
     headers = {
         "Content-Type": "application/json",
@@ -169,19 +195,9 @@ def create_meeting_bot(
             json.dumps(config)
         except TypeError as e:
             logger.error(f"JSON serialization error: {e}")
-            # Try to fix the config by converting problematic values to strings
-            for key, value in list(config.items()):
-                if not isinstance(
-                    value, (str, int, float, bool, list, dict, type(None))
-                ):
-                    config[key] = str(value)
-            # Also check nested dictionaries
-            if "streaming" in config and isinstance(config["streaming"], dict):
-                for key, value in list(config["streaming"].items()):
-                    if not isinstance(
-                        value, (str, int, float, bool, list, dict, type(None))
-                    ):
-                        config["streaming"][key] = str(value)
+            # Use our stringify_values function to convert all non-serializable values
+            config = stringify_values(config)
+            logger.info("Applied stringify_values to fix JSON serialization issues")
 
         response = requests.post(url, json=config, headers=headers)
 
