@@ -31,13 +31,17 @@ class BotRequest(BaseModel):
     # NOTE: streaming_audio_frequency is intentionally excluded and handled internally
 
     class Config:
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "meeting_url": "https://meet.google.com/abc-defg-hij",
-                "bot_name": "Assistant Bot",
+                "bot_name": "Meeting Assistant",
                 "personas": ["helpful_assistant", "meeting_facilitator"],
-                "meeting_baas_api_key": "your-api-key",
+                "meeting_baas_api_key": "mb_api_xxxxxxxxxxxxxxxxxxxxxxxx",
+                "recorder_only": False,
+                "bot_image": "https://example.com/bot-avatar.png",
+                "entry_message": "Hello! I'm here to assist with the meeting.",
                 "enable_tools": True,
+                "extra": {"company": "ACME Corp", "meeting_purpose": "Weekly sync"},
             }
         }
 
@@ -45,7 +49,14 @@ class BotRequest(BaseModel):
 class JoinResponse(BaseModel):
     """Response model for a bot joining a meeting"""
 
-    bot_id: str
+    bot_id: str = Field(
+        ...,
+        description="The MeetingBaas bot ID used for API operations with MeetingBaas",
+    )
+    client_id: str = Field(
+        ...,
+        description="A unique UUID for this bot instance used for WebSocket connections",
+    )
 
 
 class LeaveResponse(BaseModel):
@@ -57,6 +68,13 @@ class LeaveResponse(BaseModel):
 class LeaveBotRequest(BaseModel):
     """Request model for making a bot leave a meeting"""
 
-    meeting_baas_api_key: str
-    client_id: Optional[str] = None
-    bot_id: Optional[str] = None
+    meeting_baas_api_key: str = Field(
+        ..., description="Your MeetingBaas API key for authentication"
+    )
+    client_id: Optional[str] = Field(
+        None,
+        description="The client UUID to identify which bot WebSocket connection to close",
+    )
+    bot_id: Optional[str] = Field(
+        None, description="The MeetingBaas bot ID to remove from the meeting"
+    )

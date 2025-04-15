@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.routes import router as app_router
 from app.websockets import websocket_router
@@ -44,6 +45,33 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",  # Explicitly set the ReDoc URL
     )
 
+    # Set the server URL for the OpenAPI schema
+    app.openapi_schema = None  # Clear any existing schema
+
+    # Override the openapi method to add server information
+    def custom_openapi():
+        if app.openapi_schema:
+            return app.openapi_schema
+
+        openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            description=app.description,
+            routes=app.routes,
+        )
+
+        openapi_schema["servers"] = [
+            {
+                "url": "https://speaking.meetingbaas.com",
+                "description": "Production server",
+            },
+            {"url": "/", "description": "Local development server"},
+        ]
+        app.openapi_schema = openapi_schema
+        return app.openapi_schema
+
+    app.openapi = custom_openapi
+
     # Add CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -58,7 +86,7 @@ def create_app() -> FastAPI:
     app.include_router(websocket_router)
 
     # Add a health endpoint
-    @app.get("/health")
+    @app.get("/health", tags=["system"])
     async def health():
         """Health check endpoint"""
         return {
@@ -75,11 +103,6 @@ def create_app() -> FastAPI:
                     "path": "/bots/{bot_id}",
                     "method": "DELETE",
                     "description": "Remove a bot using its bot ID",
-                },
-                {
-                    "path": "/clients/{client_id}",
-                    "method": "DELETE",
-                    "description": "Remove a bot using its client ID",
                 },
                 {"path": "/", "method": "GET", "description": "API root endpoint"},
                 {
@@ -137,7 +160,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = Fals
         sys.executable,
         "-m",
         "uvicorn",
-        "app:app",  # Updated to use the app from app/__init__.py
+        "app:app",  # Use the app from app/__init__.py
         "--host",
         host,
         "--port",

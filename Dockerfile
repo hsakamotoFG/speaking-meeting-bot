@@ -35,4 +35,6 @@ RUN poetry run python -m grpc_tools.protoc --proto_path=./protobufs --python_out
 ENV PORT=8766
 
 # Run the application
-CMD ["poetry", "run", "python", "api.py", "--host", "0.0.0.0", "--port", "8766"]
+
+CMD ["poetry", "run", "python", "-m", "app.main", "--host", "0.0.0.0", "--port", "8766"]
+

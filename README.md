@@ -231,10 +231,10 @@ There are two ways to run the server:
 
 ```bash
 # Standard mode
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
+poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8766
 
 # Local development mode with ngrok auto-configuration
-poetry run python api.py --local-dev
+poetry run python run.py --local-dev
 ```
 
 The local development mode simplifies WebSocket setup by:
@@ -262,7 +262,7 @@ The local development mode simplifies WebSocket setup by:
 3. Start the server in local development mode:
 
    ```bash
-   poetry run python api.py --local-dev
+   poetry run python run.py --local-dev
    ```
 
 4. When prompted, enter the ngrok URLs shown in the ngrok terminal.
@@ -356,7 +356,7 @@ poetry install
 poetry run python -m grpc_tools.protoc --proto_path=./protobufs --python_out=./protobufs frames.proto
 
 # Run the API server with hot reload
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
+poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8766
 ```
 
 ### Local Testing with Multiple Bots
@@ -365,7 +365,7 @@ For local development and testing with multiple bots, you'll need two terminals:
 
 ```bash
 # Terminal 1: Start the API server
-poetry run uvicorn api:app --reload --host 0.0.0.0 --port 8766
+poetry run uvicorn app:app --reload --host 0.0.0.0 --port 8766
 
 # Terminal 2: Start ngrok to expose your local server
 ngrok http 8766
@@ -414,7 +414,7 @@ For production deployment, always set the BASE_URL environment variable:
 export BASE_URL=https://your-server-domain.com
 
 # Run the API server in production mode
-poetry run uvicorn api:app --host 0.0.0.0 --port 8766
+poetry run uvicorn app:app --host 0.0.0.0 --port 8766
 ```
 
 ### API Documentation

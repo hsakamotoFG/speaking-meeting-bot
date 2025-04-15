@@ -4,7 +4,7 @@ import asyncio
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -28,13 +28,19 @@ from utils.ngrok import (
 router = APIRouter()
 
 
-@router.get("/")
-async def root():
-    """Root endpoint that confirms the API is running."""
-    return {"message": "MeetingBaas Bot API is running"}
-
-
-@router.post("/bots", tags=["Bots"], response_model=JoinResponse)
+@router.post(
+    "/bots",
+    tags=["bots"],
+    response_model=JoinResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        201: {"description": "Bot successfully created and joined the meeting"},
+        400: {"description": "Bad request - Missing required fields or invalid data"},
+        500: {
+            "description": "Server error - Failed to create bot through MeetingBaas API"
+        },
+    },
+)
 async def join_meeting(request: BotRequest, client_request: Request):
     """
     Create and deploy a speaking bot in a meeting.
@@ -179,7 +185,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
         )
 
         # Return a response that matches MeetingBaas API format
-        return JoinResponse(bot_id=meetingbaas_bot_id)
+        return JoinResponse(bot_id=meetingbaas_bot_id, client_id=bot_client_id)
     else:
         return JSONResponse(
             content={
@@ -190,7 +196,19 @@ async def join_meeting(request: BotRequest, client_request: Request):
         )
 
 
-@router.delete("/bots/{bot_id}", response_model=Dict[str, Any])
+@router.delete(
+    "/bots/{bot_id}",
+    tags=["bots"],
+    response_model=Dict[str, Any],
+    responses={
+        200: {"description": "Bot successfully removed from meeting"},
+        400: {"description": "Bad request - Missing required fields or identifiers"},
+        404: {"description": "Bot not found - No bot with the specified ID"},
+        500: {
+            "description": "Server error - Failed to remove bot from MeetingBaas API"
+        },
+    },
+)
 async def leave_bot(
     bot_id: str,
     request: LeaveBotRequest,
@@ -321,27 +339,3 @@ async def leave_bot(
         "bot_id": meetingbaas_bot_id,
         "client_id": client_id,
     }
-
-
-@router.delete("/clients/{client_id}", response_model=Dict[str, Any])
-async def leave_client(
-    client_id: str,
-    request: LeaveBotRequest,
-):
-    """
-    Remove a bot from a meeting by its client ID.
-    This is a convenience endpoint that sets the client_id and calls leave_bot.
-    """
-    logger.info(f"Removing bot for client: {client_id}")
-
-    # Update the request to include the client ID from the path
-    request.client_id = client_id
-
-    # Find the MeetingBaaS bot_id if available
-    if client_id in MEETING_DETAILS:
-        # Get any data we might need from our stored mapping
-        # For now we don't store bot_id directly, but could be added
-        pass
-
-    # Delegate to the main leave_bot endpoint
-    return await leave_bot("", request)
