@@ -1,294 +1,366 @@
 import argparse
+import asyncio
 import os
-import signal
-import sys
-import time
-import uuid
+import os
+from datetime import datetime
 
-import requests
+import aiohttp
+import pytz
 from dotenv import load_dotenv
-from loguru import logger
+from pipecat.adapters.schemas.function_schema import FunctionSchema
+from pipecat.adapters.schemas.tools_schema import ToolsSchema
+from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
+from pipecat.frames.frames import LLMMessagesFrame
+from pipecat.pipeline.pipeline import Pipeline
+from pipecat.pipeline.runner import PipelineRunner
+from pipecat.pipeline.task import PipelineParams, PipelineTask
+from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
 
-logger.remove()
-logger.add(sys.stderr, level="INFO")
+# from pipecat.services.gladia.stt import GladiaSTTService
+from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.transports.network.websocket_client import (
+    WebsocketClientParams,
+    WebsocketClientTransport,
+)
 
-from config.persona_utils import persona_manager
+from config.persona_utils import PersonaManager
+from config.prompts import DEFAULT_SYSTEM_PROMPT
 from meetingbaas_pipecat.utils.logger import configure_logger
+
+load_dotenv(override=True)
 
 logger = configure_logger()
 
-# Load environment variables from .env file
-load_dotenv()
-API_KEY = os.getenv("MEETING_BAAS_API_KEY")
-API_URL = os.getenv("MEETING_BAAS_API_URL", "https://api.meetingbaas.com")
 
-if not API_KEY:
-    logger.error("MEETING_BAAS_API_KEY not found in environment variables")
-    exit(1)
+# Function tool implementations
+async def get_weather(
+    function_name, tool_call_id, arguments, llm, context, result_callback
+):
+    """Get the current weather for a location."""
+    location = arguments["location"]
+    format = arguments["format"]  # Default to Celsius if not specified
+    unit = (
+        "m" if format == "celsius" else "u"
+    )  # "m" for metric, "u" for imperial in wttr.in
 
-if not API_URL:
-    logger.warning("MEETING_BAAS_API_URL not found, using default: https://api.meetingbaas.com")
+    url = f"https://wttr.in/{location}?format=%t+%C&{unit}"
 
-
-def validate_url(url):
-    """Validates the URL format, ensuring it starts with https://"""
-    if not url.startswith("https://"):
-        raise ValueError("URL must start with https://")
-    return url
-
-
-def get_user_input(prompt, validator=None):
-    while True:
-        user_input = input(prompt).strip()
-        if validator:
-            try:
-                return validator(user_input)
-            except ValueError as e:
-                logger.warning(f"Invalid input received: {e}")
-        else:
-            return user_input
-
-
-def get_persona_selection():
-    """Prompts user to select a persona from available options"""
-    available_personas = persona_manager.list_personas()
-    logger.info("\nAvailable personas:")
-    for persona_key in available_personas:
-        persona = persona_manager.get_persona(persona_key)
-        logger.info(f"{persona_key}: {persona['name']}")
-
-    logger.info("\nPress Enter for random selection or type persona name:")
-
-    while True:
-        try:
-            choice = (
-                input("\nSelect a persona (enter name or press Enter for random): ")
-                .strip()
-                .lower()
-            )
-            if not choice:  # Empty input
-                return None
-            if choice in available_personas:
-                return choice
-            logger.warning("Invalid selection. Please try again.")
-        except ValueError:
-            logger.warning("Please enter a valid persona name.")
-
-
-def get_baas_bot_dedup_key(character_name: str, is_recorder_only: bool) -> str:
-    if is_recorder_only:
-        # Generate a random UUID for recorder bots
-        return f"BaaS-Recorder-{uuid.uuid4().hex[:8]}"
-    return character_name + "-BaaS"
-
-
-def create_baas_bot(meeting_url, ngrok_url, persona_name=None, recorder_only=False):
-    if recorder_only:
-        config = {
-            "meeting_url": meeting_url,
-            "bot_name": "BaaS Meeting Recorder",
-            "recording_mode": "speaker_view",
-            "bot_image": "https://i0.wp.com/fishingbooker-prod-blog-backup.s3.amazonaws.com/blog/media/2019/06/14152536/Largemouth-Bass-1024x683.jpg",
-            "entry_message": "I will only record this meeting to check the quality of the data recorded by MeetingBaas API through this meeting bot. To learn more about Meeting Baas, visit meetingbaas.com. Data recorded in this meeting will not be used for any other purpose than this quality check, in accordance with MeetingBaas's privacy policy, https://meetingbaas.com/privacy.",
-            "reserved": False,
-            "speech_to_text": {"provider": "Default"},
-            "automatic_leave": {"waiting_room_timeout": 600},
-            "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
-            "extra": {
-                "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
-            },
-            # "webhook_url": "",
-        }
-    else:
-        # Existing bot creation logic
-        if not persona_name:
-            persona_name = get_persona_selection()
-
-        try:
-            persona = persona_manager.get_persona(persona_name)
-        except KeyError:
-            try:
-                folder_name = persona_name.lower().replace(" ", "_")
-                persona = persona_manager.get_persona(folder_name)
-            except KeyError:
-                logger.error(
-                    f"Persona '{persona_name}' not found in available personas."
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                weather_data = await response.text()
+                await result_callback(
+                    f"The weather in {location} is currently {weather_data} ({format.capitalize()})."
                 )
-                return None
+            else:
+                await result_callback(
+                    f"Failed to fetch the weather data for {location}."
+                )
 
-        config = {
-            "meeting_url": meeting_url,
-            "bot_name": persona["name"],
-            "recording_mode": "speaker_view",
-            "reserved": False,
-            # no speech to text for speaking bots, add one to recorder bots
-            # TODO: log speech to text provided by Pipecat and speech to text streaming APIs
-            # "speech_to_text": {"provider": "Default"},
-            "automatic_leave": {"waiting_room_timeout": 600},
-            "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only),
-            "streaming": {"input": ngrok_url, "output": ngrok_url},
-            "extra": {
-                "deduplication_key": get_baas_bot_dedup_key(persona_name, recorder_only)
+
+async def get_time(
+    function_name, tool_call_id, arguments, llm, context, result_callback
+):
+    """Get the current time for a location."""
+    location = arguments["location"]
+
+    # Set timezone based on the provided location
+    try:
+        timezone = pytz.timezone(location)
+        current_time = datetime.now(timezone)
+        formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
+        await result_callback(f"The current time in {location} is {formatted_time}.")
+    except pytz.UnknownTimeZoneError:
+        await result_callback(
+            f"Invalid location specified. Could not determine time for {location}."
+        )
+
+
+async def main(
+    meeting_url: str = "",
+    persona_name: str = "Meeting Bot",
+    entry_message: str = "Hello, I am the meeting bot",
+    bot_image: str = "",
+    streaming_audio_frequency: str = "24khz",
+    websocket_url: str = "",
+    enable_tools: bool = True,
+):
+    """
+    Run the MeetingBaas bot with specified configurations
+
+    Args:
+        meeting_url: URL to join the meeting
+        persona_name: Name to display for the bot
+        entry_message: Message to send when joining
+        bot_image: URL for bot avatar
+        streaming_audio_frequency: Audio frequency for streaming (16khz or 24khz)
+        websocket_url: Full WebSocket URL to connect to, including any path
+        enable_tools: Whether to enable function tools like weather and time
+    """
+    # Load environment variables for credentials (OpenAI, etc.)
+    load_dotenv()
+
+    # Validate WebSocket URL
+    if not websocket_url:
+        logger.error("Error: WebSocket URL not provided")
+        return
+
+    logger.info(f"Using WebSocket URL: {websocket_url}")
+
+    # Extract bot_id from the websocket_url if possible
+    # Format is usually: ws://localhost:8766/pipecat/{client_id}
+    parts = websocket_url.split("/")
+    bot_id = parts[-1] if len(parts) > 3 else "unknown"
+    logger.info(f"Using bot ID: {bot_id}")
+
+    # Set sample rate based on streaming_audio_frequency
+    output_sample_rate = 24000 if streaming_audio_frequency == "24khz" else 16000
+    # Silero VAD only supports 16000 or 8000 Hz
+    vad_sample_rate = 16000
+
+    logger.info(
+        f"Using audio frequency: {streaming_audio_frequency} (output sample rate: {output_sample_rate}, VAD sample rate: {vad_sample_rate})"
+    )
+
+    # Create resampler for VAD if needed
+    resampler = None
+    if output_sample_rate != vad_sample_rate:
+        resampler = BaseAudioResampler()
+        logger.info(f"Created resampler for converting {output_sample_rate}Hz to {vad_sample_rate}Hz")
+
+    # Set up the WebSocket transport with correct sample rates - use the full WebSocket URL directly
+    transport = WebsocketClientTransport(
+        uri=websocket_url,
+        params=WebsocketClientParams(
+            audio_out_sample_rate=output_sample_rate,
+            audio_out_enabled=True,
+            add_wav_header=False,
+            vad_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(
+                sample_rate=16000,  # Must be either 8000 or 16000
+                params=VADParams(
+                    threshold=0.5,  # Confidence threshold for speech detection
+                    min_speech_duration_ms=250,  # Time in ms that speech must be detected
+                    min_silence_duration_ms=100,  # Time in ms of silence required
+                    min_volume=0.6,  # Minimum audio volume threshold
+                ),
+            ),
+            vad_audio_passthrough=True,
+            serializer=ProtobufFrameSerializer(),
+        ),
+    )
+
+    # Get persona configuration
+    persona_manager = PersonaManager()
+    persona = persona_manager.get_persona(persona_name)
+    if not persona:
+        logger.error(f"Persona '{persona_name}' not found")
+        return
+
+    # Get additional content from persona
+    additional_content = persona.get("additional_content", "")
+    if additional_content:
+        logger.info("Found additional content for persona")
+    else:
+        logger.info("No additional content found for persona")
+
+    # Get voice ID from persona if available, otherwise use env var
+    voice_id = persona.get("cartesia_voice_id") or os.getenv("CARTESIA_VOICE_ID")
+    logger.info(f"Using voice ID: {voice_id}")
+
+    # Initialize services
+    tts = CartesiaTTSService(
+        api_key=os.getenv("CARTESIA_API_KEY"),
+        voice_id=voice_id,  # Use voice ID from persona
+        sample_rate=output_sample_rate,  # Use the same sample rate as transport
+    )
+
+    llm = OpenAILLMService(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        model="gpt-4-turbo-preview",
+    )
+
+    # Register function tools if enabled
+    if enable_tools:
+        logger.info("Registering function tools")
+
+        # Register functions
+        llm.register_function("get_weather", get_weather)
+        llm.register_function("get_time", get_time)
+
+        # Define function schemas
+        weather_function = FunctionSchema(
+            name="get_weather",
+            description="Get the current weather",
+            properties={
+                "location": {
+                    "type": "string",
+                    "description": "The city and state, e.g. San Francisco, CA",
+                },
+                "format": {
+                    "type": "string",
+                    "enum": ["celsius", "fahrenheit"],
+                    "description": "The temperature unit to use. Infer this from the users location.",
+                },
             },
-            # "webhook_url": "https://webhook-test.com/ce63096bd2c0f2793363fd3fb32bc066",
+            required=["location", "format"],
+        )
+
+        time_function = FunctionSchema(
+            name="get_time",
+            description="Get the current time for a specific location",
+            properties={
+                "location": {
+                    "type": "string",
+                    "description": "The location for which to retrieve the current time (e.g., 'Asia/Kolkata', 'America/New_York')",
+                },
+            },
+            required=["location"],
+        )
+
+        # Create tools schema
+        tools = ToolsSchema(standard_tools=[weather_function, time_function])
+    else:
+        logger.info("Function tools are disabled")
+        tools = None
+
+    # Add speech-to-text service
+    # Extract language code from persona if available
+    language = persona.get("language_code", "en-US")
+    logger.info(f"Using language: {language}")
+
+    stt = DeepgramSTTService(
+        api_key=os.getenv("DEEPGRAM_API_KEY"),
+        encoding="linear16" if streaming_audio_frequency == "16khz" else "linear24",
+        sample_rate=output_sample_rate,
+        language=language,  # Use language from persona
+    )
+    # stt = GladiaSTTService(
+    #     api_key=os.getenv("GLADIA_API_KEY"),
+    #     encoding="linear16" if streaming_audio_frequency == "16khz" else "linear24",
+    #     sample_rate=output_sample_rate,
+    #     language=language,  # Use language from persona
+    # )
+
+    # Make sure we're setting a valid bot name
+    bot_name = persona_name or "Bot"
+    logger.info(f"Using bot name: {bot_name}")
+
+    # Create a more comprehensive system prompt
+    system_content = persona["prompt"]
+
+    # Add additional context if available
+    if additional_content:
+        system_content += f"\n\nYou are {persona_name}\n\n{DEFAULT_SYSTEM_PROMPT}\n\n"
+        system_content += "You have the following additional context. USE IT TO INFORM YOUR RESPONSES:\n\n"
+        system_content += additional_content
+        system_content += "You are a meeting bot. You are in a meeting with a group of people. You are here to help the group. You are not the host of the meeting. You are not the organizer of the meeting. You are not the participant in the meeting. You are the meeting bot."
+        system_content += "YOU ARE HELP TO HELP. KEEP IT SHORT. EVERYTHING YOU SAY WILL BE REPEATED BACK TO THE GROUP OUT LOUD so DO NOT add PUNCTUATION OR CAPS. JUST SAY WHAT YOU NEED TO SAY IN A CONCISE MANNER."
+
+
+    # Set up messages
+    messages = [
+        {
+            "role": "system",
+            "content": system_content,
+        },
+    ]
+
+    # Create the context object - with or without tools
+    if enable_tools and tools:
+        context = OpenAILLMContext(messages, tools)
+    else:
+        context = OpenAILLMContext(messages)
+
+    # Get the context aggregator pair using the LLM's method
+    # This handles properly setting up the context aggregators
+    aggregator_pair = llm.create_context_aggregator(context)
+
+    # Get the user and assistant aggregators from the pair
+    user_aggregator = aggregator_pair.user()
+    assistant_aggregator = aggregator_pair.assistant()
+
+    # Create pipeline using the single instances - adding STT service
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            stt,  # Add speech-to-text service
+            user_aggregator,  # Process user input and update context
+            llm,
+            tts,
+            transport.output(),
+            assistant_aggregator,  # Store LLM responses in context
+        ]
+    )
+
+    # Create and run task
+    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
+    runner = PipelineRunner()
+
+    # Handle the initial greeting if needed
+    if entry_message:
+        logger.info("Bot will speak first with an introduction")
+        # Prepare a greeting message
+        initial_message = {
+            "role": "user",
+            "content": entry_message,
         }
 
-        if persona.get("image"):
-            config["bot_image"] = persona["image"]
-        if persona.get("entry_message"):
-            config["entry_message"] = persona["entry_message"]
+        # Queue the initial message to be processed once the pipeline starts
+        async def queue_initial_message():
+            await asyncio.sleep(2)  # Small delay to ensure transport is ready
+            await task.queue_frames([LLMMessagesFrame([initial_message])])
+            logger.info("Initial greeting message queued")
 
-    url = f"{API_URL}/bots"
-    headers = {
-        "Content-Type": "application/json",
-        "x-meeting-baas-api-key": API_KEY,
-    }
+        # Create a task to queue the initial message
+        asyncio.create_task(queue_initial_message())
 
-    logger.warning(f"Sending bot config to MeetingBaas API: {config}")
-
-    response = requests.post(url, json=config, headers=headers)
-    if response.status_code == 200:
-        bot_id = response.json().get("bot_id")
-        logger.success(f"Bot created successfully with ID: {bot_id}")
-        return bot_id
-    else:
-        error_msg = f"Failed to create bot: {response.json()}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
-
-
-def delete_bot(bot_id):
-    delete_url = f"{API_URL}/bots/{bot_id}"
-    headers = {
-        "Content-Type": "application/json",
-        "x-meeting-baas-api-key": API_KEY,
-    }
-
-    logger.info(f"Attempting to delete bot with ID: {bot_id}")
-    response = requests.delete(delete_url, headers=headers)
-
-    if response.status_code != 200:
-        error_msg = f"Failed to delete bot: {response.json()}"
-        logger.error(error_msg)
-        raise Exception(error_msg)
-    else:
-        logger.success(f"Bot {bot_id} deleted successfully")
-
-
-class BotManager:
-    def __init__(self, args):
-        self.args = args
-        self.current_bot_id = None
-        logger.info("BotManager initialized with args: {}", args)
-
-    def run(self):
-        logger.info("Starting BotManager")
-        signal.signal(signal.SIGINT, self.signal_handler)
-
-        while True:
-            try:
-                if not self.args.recorder_only:
-                    self.get_or_update_urls()
-                self.create_and_manage_bot()
-            except Exception as e:
-                logger.exception(f"An error occurred during bot management: {e}")
-                if self.current_bot_id:
-                    self.delete_current_bot()
-                time.sleep(5)
-
-    def get_or_update_urls(self):
-        """Get or update URLs in the order: ngrok -> persona -> meeting URL"""
-        if not self.args.ngrok_url:
-            logger.info("Prompting for ngrok URL")
-            self.args.ngrok_url = get_user_input(
-                "Enter the ngrok URL (must start with https://): ", validate_url
-            )
-            self.args.ngrok_url = "wss://" + self.args.ngrok_url[8:]
-
-        if not self.args.persona_name:
-            self.args.persona_name = get_persona_selection()
-
-        if not self.args.meeting_url:
-            logger.info("Prompting for meeting URL")
-            self.args.meeting_url = get_user_input(
-                "Enter the meeting URL (must start with https://): ", validate_url
-            )
-
-        logger.debug(
-            f"URLs configured - Meeting: {self.args.meeting_url}, WSS: {self.args.ngrok_url}"
-        )
-
-    def create_and_manage_bot(self):
-        self.current_bot_id = create_baas_bot(
-            self.args.meeting_url,
-            self.args.ngrok_url,
-            self.args.persona_name,
-            self.args.recorder_only,
-        )
-
-        logger.warning(f"Bot name: {self.args.persona_name}")
-
-        logger.info("\nOptions:")
-        logger.info("- Press Enter to respawn bot with same URLs")
-        logger.info("- Enter 'n' to input new URLs")
-        logger.info("- Enter 'p' to select a new persona")
-        logger.info("- Press Ctrl+C to exit")
-
-        user_choice = input().strip().lower()
-        logger.debug(f"User selected option: {user_choice}")
-
-        self.delete_current_bot()
-
-        if user_choice == "n":
-            logger.warning("User requested new URLs")
-            self.args.meeting_url = None
-            self.args.ngrok_url = None
-        elif user_choice == "p":
-            logger.warning("User requested new persona")
-            self.args.persona_name = None
-
-    def delete_current_bot(self):
-        if self.current_bot_id:
-            try:
-                delete_bot(self.current_bot_id)
-            except Exception as e:
-                logger.exception(f"Error deleting bot: {e}")
-            finally:
-                self.current_bot_id = None
-
-    def signal_handler(self, signum, frame):
-        logger.warning("Ctrl+C detected, initiating cleanup...")
-        self.delete_current_bot()
-        logger.success("Bot cleaned up successfully")
-        logger.info("Exiting...")
-        exit(0)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Meeting BaaS Bot")
-    parser.add_argument(
-        "--meeting-url", help="The meeting URL (must start with https://)"
-    )
-    parser.add_argument("--ngrok-url", help="The ngrok URL (must start with https://)")
-    parser.add_argument(
-        "--persona-name",
-        help="The name of the persona to use (e.g., 'interviewer', 'pair_programmer')",
-    )
-    parser.add_argument(
-        "--recorder-only",
-        action="store_true",
-        help="Run as recording-only bot",
-    )
-    parser.add_argument(
-        "--config", type=str, help="JSON configuration for recorder bot"
-    )
-
-    args = parser.parse_args()
-    logger.info("Starting application with arguments: {}", args)
-
-    bot_manager = BotManager(args)
-    bot_manager.run()
+    # Run the pipeline
+    await runner.run(task)
 
 
 if __name__ == "__main__":
-    main()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Run a MeetingBaas bot")
+    parser.add_argument("--meeting-url", help="URL of the meeting to join")
+    parser.add_argument(
+        "--persona-name", default="Meeting Bot", help="Name to display for the bot"
+    )
+    parser.add_argument(
+        "--entry-message",
+        default="Hello, I am the meeting bot",
+        help="Message to send when joining",
+    )
+    parser.add_argument("--bot-image", default="", help="URL for bot avatar")
+    parser.add_argument(
+        "--streaming-audio-frequency",
+        default="16khz",
+        choices=["16khz", "24khz"],
+        help="Audio frequency for streaming (16khz or 24khz)",
+    )
+    parser.add_argument(
+        "--websocket-url", help="Full WebSocket URL to connect to, including any path"
+    )
+    parser.add_argument(
+        "--enable-tools",
+        action="store_true",
+        help="Enable function tools like weather and time",
+    )
+
+    args = parser.parse_args()
+
+    # Run the bot
+    asyncio.run(
+        main(
+            meeting_url=args.meeting_url,
+            persona_name=args.persona_name,
+            entry_message=args.entry_message,
+            bot_image=args.bot_image,
+            streaming_audio_frequency=args.streaming_audio_frequency,
+            websocket_url=args.websocket_url,
+            enable_tools=args.enable_tools,
+        )
+    )

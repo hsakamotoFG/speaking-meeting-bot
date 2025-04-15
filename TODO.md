@@ -1,2 +1,0 @@
-- [ ] Fix main.py keyboard interruption
-- [ ] Add devcontainers config
