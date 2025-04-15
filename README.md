@@ -50,7 +50,6 @@ The project follows a streamlined API-first approach with:
    {
      "meeting_url": "https://meet.google.com/xxx-yyyy-zzz",
      "personas": ["interviewer"],
-     "recorder_only": false,
      "meeting_baas_api_key": "your-api-key",
      "bot_image": "https://example.com/avatar.jpg",
      "entry_message": "Hello, I'm here to help!"
@@ -396,7 +395,6 @@ meetingbaas_bot_id = create_meeting_bot(
     persona_name=persona_name,
     api_key=request.meeting_baas_api_key,
     # Additional parameters
-    recorder_only=request.recorder_only,
     bot_image=request.bot_image,
     entry_message=request.entry_message,
     extra=request.extra,

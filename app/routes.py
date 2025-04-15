@@ -68,9 +68,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
         logger.info("🔍 Running in standard mode")
 
     # Determine WebSocket URL (works in all cases now)
-    websocket_url, temp_client_id = determine_websocket_url(
-        request.websocket_url, client_request
-    )
+    websocket_url, temp_client_id = determine_websocket_url(None, client_request)
 
     logger.info(f"Starting bot for meeting {request.meeting_url}")
     logger.info(f"WebSocket URL: {websocket_url}")
@@ -181,8 +179,12 @@ async def join_meeting(request: BotRequest, client_request: Request):
             streaming_audio_frequency,
         )
 
-        # Return a response that matches MeetingBaas API format
-        return JoinResponse(bot_id=meetingbaas_bot_id, client_id=bot_client_id)
+        # Log the client_id for internal reference
+        logger.info(f"Bot created with MeetingBaas bot_id: {meetingbaas_bot_id}")
+        logger.info(f"Internal client_id for WebSocket connections: {bot_client_id}")
+
+        # Return only the bot_id in the response
+        return JoinResponse(bot_id=meetingbaas_bot_id)
     else:
         return JSONResponse(
             content={
@@ -220,11 +222,11 @@ async def leave_bot(
     """
     logger.info(f"Removing bot with ID: {bot_id}")
 
-    # Verify we have at least the bot_id or client_id
-    if not bot_id and not request.bot_id and not request.client_id:
+    # Verify we have the bot_id
+    if not bot_id and not request.bot_id:
         return JSONResponse(
             content={
-                "message": "Either bot_id path parameter or client_id in request body is required",
+                "message": "Bot ID is required",
                 "status": "error",
             },
             status_code=400,
@@ -232,29 +234,18 @@ async def leave_bot(
 
     # Use the path parameter bot_id if provided, otherwise use request.bot_id
     meetingbaas_bot_id = bot_id or request.bot_id
-    client_id = request.client_id
+    client_id = None
 
-    # Try to find the client ID from our stored mapping if not provided
+    # Look through MEETING_DETAILS to find the client ID for this bot ID
+    for cid, details in MEETING_DETAILS.items():
+        # Check if the stored meetingbaas_bot_id matches
+        if len(details) >= 3 and details[2] == meetingbaas_bot_id:
+            client_id = cid
+            logger.info(f"Found client ID {client_id} for bot ID {meetingbaas_bot_id}")
+            break
+
     if not client_id:
-        # Look through MEETING_DETAILS to find the client ID for this bot ID
-        for cid, details in MEETING_DETAILS.items():
-            # See if we have a stored mapping for this bot ID
-            # Check if the stored meetingbaas_bot_id matches
-            if len(details) >= 3 and details[2] == meetingbaas_bot_id:
-                client_id = cid
-                logger.info(
-                    f"Found client ID {client_id} for bot ID {meetingbaas_bot_id}"
-                )
-                break
-            # For now, just checking if client ID is available as a fallback
-            logger.info(f"Checking client ID: {cid}")
-
-    # If we found a client ID, try to get the meetingbaas_bot_id if not already provided
-    if client_id and not meetingbaas_bot_id and client_id in MEETING_DETAILS:
-        details = MEETING_DETAILS[client_id]
-        if len(details) >= 3 and details[2]:
-            meetingbaas_bot_id = details[2]
-            logger.info(f"Found bot ID {meetingbaas_bot_id} for client {client_id}")
+        logger.warning(f"No client ID found for bot ID {meetingbaas_bot_id}")
 
     success = True
 
@@ -334,5 +325,4 @@ async def leave_bot(
         "message": "Bot removal request processed",
         "status": "success" if success else "partial",
         "bot_id": meetingbaas_bot_id,
-        "client_id": client_id,
     }
