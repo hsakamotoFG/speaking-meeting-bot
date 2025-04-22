@@ -25,7 +25,10 @@ class ImageService:
             app_id=os.getenv("APP_ID")
         )
         # Set Replicate API token
-        self.replicate_key = os.getenv("REPLICATE_KEY", "").replace("sk_live_", "")
+        # Replicate API tokens shouldn't include the "sk_live_" prefix
+        self.replicate_key = os.getenv("REPLICATE_KEY", "")
+        if self.replicate_key.startswith("sk_live_"):
+            self.replicate_key = self.replicate_key.replace("sk_live_", "")
         os.environ["REPLICATE_API_TOKEN"] = self.replicate_key
         logger.info("Initialized Replicate client and UTFSUploader for image generation")
     
