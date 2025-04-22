@@ -381,7 +381,16 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
         
     except Exception as e:
         logger.error(f"Error generating image: {str(e)}")
+        if isinstance(e, ValueError):
+            # ValueError typically indicates invalid input
+            status_code = status.HTTP_400_BAD_REQUEST
+        elif "connection" in str(e).lower() or "timeout" in str(e).lower():
+            # Network errors should be 503 Service Unavailable
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        else:
+            # Default to internal server error
+            status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status_code,
             detail=str(e)
         )
