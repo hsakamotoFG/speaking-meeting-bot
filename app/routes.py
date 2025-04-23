@@ -343,28 +343,22 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
     """Generate an image for a persona using Replicate."""
     try:
         # Build the prompt from available fields
-        prompt_parts = []
-        
-        print(1)
-        print(request.name)
-        # Add name and description
-        prompt_parts.append(f"A detailed professional portrait of a single person named {request.name}")
+        # Build the prompt using a more concise approach
+        prompt = f"A detailed professional portrait of a single person named {request.name}"
 
-        # Add gender if specified
         if request.gender:
-            prompt_parts.append(f"{request.gender.capitalize()}")
+            prompt += f". {request.gender.capitalize()}"
 
-        # Add description if present
         if request.description:
-            prompt_parts.append(f"who {request.description.strip().rstrip('.')}")
+            cleaned_desc = request.description.strip().rstrip('.')
+            prompt += f". Who {cleaned_desc}"
 
-        # Add characteristics
-        if request.characteristics:
+        if request.characteristics and len(request.characteristics) > 0:
             traits = ", ".join(request.characteristics)
-            prompt_parts.append(f"with features like {traits}")
+            prompt += f". With features like {traits}"
 
-        # Final combined prompt — clean, direct, and structured
-        prompt = ". ".join(prompt_parts) + ". High quality, single person, centered, studio lighting, neutral background, avoid borders."
+        # Add standard quality guidelines
+        prompt += ". High quality, single person, centered, studio lighting, neutral background, avoid borders."
 
         # Generate the image
         image_response = image_service.generate_persona_image(
