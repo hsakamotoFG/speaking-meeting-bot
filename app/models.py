@@ -1,6 +1,7 @@
 """Data models for the Speaking Meeting Bot API."""
 
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -66,3 +67,22 @@ class LeaveBotRequest(BaseModel):
         None,
         description="The MeetingBaas bot ID to remove from the meeting. This will also close the WebSocket connection made through Pipecat by this bot.",
     )
+
+
+class PersonaImageRequest(BaseModel):
+    """Request model for generating persona images."""
+    name: str = Field(..., description="Name of the persona")
+    description: Optional[str] = Field(None, description="Description of the persona")
+    gender: Optional[str] = Field(None, description="Gender of the persona")
+    characteristics: Optional[List[str]] = Field(None, description="List of characteristics like blue eyes, etc.")
+
+class PersonaImageResponse(BaseModel):
+    """Response model for generated persona images."""
+    image_url: str = Field(..., description="URL of the generated image")
+    prompt: str = Field(..., description="Prompt used for image generation")
+    generated_at: datetime = Field(..., description="Timestamp of generation")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
