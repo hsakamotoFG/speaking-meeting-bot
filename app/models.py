@@ -78,8 +78,8 @@ class PersonaImageRequest(BaseModel):
 
 class PersonaImageResponse(BaseModel):
     """Response model for generated persona images."""
+    name: str = Field(..., description="Name of the persona")
     image_url: str = Field(..., description="URL of the generated image")
-    prompt: str = Field(..., description="Prompt used for image generation")
     generated_at: datetime = Field(..., description="Timestamp of generation")
 
     class Config:
