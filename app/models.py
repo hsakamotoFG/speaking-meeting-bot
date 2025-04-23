@@ -80,4 +80,9 @@ class PersonaImageResponse(BaseModel):
     """Response model for generated persona images."""
     image_url: str = Field(..., description="URL of the generated image")
     prompt: str = Field(..., description="Prompt used for image generation")
-    generated_at: str = Field(..., description="Timestamp of generation")
+    generated_at: datetime = Field(..., description="Timestamp of generation")
+
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
