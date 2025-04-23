@@ -72,10 +72,9 @@ class LeaveBotRequest(BaseModel):
 class PersonaImageRequest(BaseModel):
     """Request model for generating persona images."""
     name: str = Field(..., description="Name of the persona")
-    description: str = Field(None, description="Description of the persona")
+    description: Optional[str] = Field(None, description="Description of the persona")
     gender: Optional[str] = Field(None, description="Gender of the persona")
     characteristics: Optional[List[str]] = Field(None, description="List of characteristics like blue eyes, etc.")
-
 
 class PersonaImageResponse(BaseModel):
     """Response model for generated persona images."""
