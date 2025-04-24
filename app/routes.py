@@ -4,10 +4,10 @@ import asyncio
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
+from io import BytesIO
 
 from fastapi import APIRouter, HTTPException, Request, status
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, HttpUrl
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from app.models import BotRequest, JoinResponse, LeaveBotRequest, PersonaImageRequest, PersonaImageResponse
 from config.persona_utils import persona_manager
@@ -344,7 +344,8 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
     try:
         # Build the prompt from available fields
         # Build the prompt using a more concise approach
-        prompt = f"A detailed professional portrait of a single person named {request.name}"
+        name = request.name
+        prompt = f"A detailed professional portrait of a single person named {name}"
 
         if request.gender:
             prompt += f". {request.gender.capitalize()}"
@@ -358,18 +359,19 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
             prompt += f". With features like {traits}"
 
         # Add standard quality guidelines
-        prompt += ". High quality, single person, centered, studio lighting, neutral background, avoid borders."
+        prompt += ". High quality, single person, only face and shoulders, centered, neutral background, avoid borders."
 
         # Generate the image
         image_response = image_service.generate_persona_image(
+            name=name,
             prompt=prompt,
             style="realistic",
             size=(512, 512)
         )
-        
+
         return PersonaImageResponse(
+            name=name,
             image_url=image_response,
-            prompt=prompt,
             generated_at=datetime.utcnow().isoformat()
         )
         
