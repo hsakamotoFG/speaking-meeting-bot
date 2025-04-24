@@ -2,14 +2,21 @@
 
 import asyncio
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
 from datetime import datetime
 from io import BytesIO
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from app.models import BotRequest, JoinResponse, LeaveBotRequest, PersonaImageRequest, PersonaImageResponse
+from app.models import (
+    BotRequest,
+    JoinResponse,
+    LeaveBotRequest,
+    PersonaImageRequest,
+    PersonaImageResponse,
+)
+from app.services.image_service import image_service
 from config.persona_utils import persona_manager
 from core.connection import MEETING_DETAILS, PIPECAT_PROCESSES, registry
 from core.process import start_pipecat_process, terminate_process_gracefully
@@ -25,7 +32,6 @@ from utils.ngrok import (
     release_ngrok_url,
     update_ngrok_client_id,
 )
-from app.services.image_service import image_service
 
 router = APIRouter()
 
@@ -332,6 +338,7 @@ async def leave_bot(
 
 @router.post(
     "/personas/generate-image",
+    tags=["personas"],
     response_model=PersonaImageResponse,
     status_code=status.HTTP_201_CREATED,
     responses={
@@ -351,7 +358,7 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
             prompt += f". {request.gender.capitalize()}"
 
         if request.description:
-            cleaned_desc = request.description.strip().rstrip('.')
+            cleaned_desc = request.description.strip().rstrip(".")
             prompt += f". Who {cleaned_desc}"
 
         if request.characteristics and len(request.characteristics) > 0:
@@ -363,18 +370,15 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
 
         # Generate the image
         image_response = image_service.generate_persona_image(
-            name=name,
-            prompt=prompt,
-            style="realistic",
-            size=(512, 512)
+            name=name, prompt=prompt, style="realistic", size=(512, 512)
         )
 
         return PersonaImageResponse(
             name=name,
             image_url=image_response,
-            generated_at=datetime.utcnow().isoformat()
+            generated_at=datetime.utcnow().isoformat(),
         )
-        
+
     except Exception as e:
         logger.error(f"Error generating image: {str(e)}")
         if isinstance(e, ValueError):
@@ -386,7 +390,4 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
         else:
             # Default to internal server error
             status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
-        raise HTTPException(
-            status_code=status_code,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=status_code, detail=str(e))
