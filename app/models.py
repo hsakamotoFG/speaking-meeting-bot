@@ -38,7 +38,6 @@ class BotRequest(BaseModel):
                 "extra": {"company": "ACME Corp", "meeting_purpose": "Weekly sync"},
             }
         }
-z
 
 class JoinResponse(BaseModel):
     """Response model for a bot joining a meeting"""

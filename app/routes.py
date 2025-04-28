@@ -210,6 +210,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
 async def leave_bot(
     bot_id: str,
     request: LeaveBotRequest,
+    client_request: Request,
 ):
     """
     Remove a bot from a meeting by its ID.
@@ -221,7 +222,7 @@ async def leave_bot(
     """
     logger.info(f"Removing bot with ID: {bot_id}")
     # Get API key from request state (set by middleware)
-    api_key = request.state.api_key
+    api_key = client_request.state.api_key
 
     # Verify we have the bot_id
     if not bot_id and not request.bot_id:
