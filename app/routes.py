@@ -252,7 +252,7 @@ async def leave_bot(
     success = True
 
     # 1. Call MeetingBaas API to make the bot leave
-    if meetingbaas_bot_id and api_key:
+    if meetingbaas_bot_id:
         logger.info(f"Removing bot with ID: {meetingbaas_bot_id} from MeetingBaas API")
         result = leave_meeting_bot(
             bot_id=meetingbaas_bot_id,

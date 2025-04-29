@@ -81,17 +81,19 @@ def create_app() -> FastAPI:
             routes=app.routes,
         )
 
-        # Add security scheme for API key
-        openapi_schema["components"] = {
-            "securitySchemes": {
-                "ApiKeyAuth": {
-                    "type": "apiKey",
-                    "in": "header",
-                    "name": "x-meeting-baas-api-key",
-                    "description": "MeetingBaas API key for authentication",
-                }
-            },
-            "schemas": {
+        # Ensure we extend, not replace, existing components
+        components = openapi_schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        security_schemes["ApiKeyAuth"] = {
+            "type": "apiKey",
+            "in": "header",
+            "name": "x-meeting-baas-api-key",
+            "description": "MeetingBaas API key for authentication",
+        }
+        
+        schemas = components.setdefault("schemas", {})
+        schemas.update(
+            {
                 "PersonaImageRequest": {
                     "type": "object",
                     "required": ["name", "description"],
@@ -137,7 +139,8 @@ def create_app() -> FastAPI:
                     }
                 }
             }
-        }
+        )
+
         # Apply security globally
         openapi_schema["security"] = [{"ApiKeyAuth": []}]
 
