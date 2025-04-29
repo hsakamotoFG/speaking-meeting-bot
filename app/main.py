@@ -6,9 +6,10 @@ import os
 import sys
 from typing import Dict, List, Optional, Tuple
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
 
 from app.routes import router as app_router
 from app.websockets import websocket_router
@@ -22,6 +23,24 @@ logger.name = "meetingbaas-api"  # Set logger name after configuring
 # Set logging level for pipecat WebSocket client to WARNING to reduce noise
 pipecat_ws_logger = logging.getLogger("pipecat.transports.network.websocket_client")
 pipecat_ws_logger.setLevel(logging.WARNING)
+
+
+async def api_key_middleware(request: Request, call_next):
+    """Middleware to check for MeetingBaas API key in headers."""
+    # Skip API key check for docs and openapi endpoints
+    if request.url.path in ["/docs", "/openapi.json", "/redoc"]:
+        return await call_next(request)
+
+    api_key = request.headers.get("x-meeting-baas-api-key")
+    if not api_key:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"message": "Missing MeetingBaas API key in x-meeting-baas-api-key header"},
+        )
+
+    # Add the API key to the request state for use in routes
+    request.state.api_key = api_key
+    return await call_next(request)
 
 
 def create_app() -> FastAPI:
@@ -44,6 +63,9 @@ def create_app() -> FastAPI:
         # redoc_url="/redoc",  # Explicitly set the ReDoc URL
     )
 
+    # Add API key middleware
+    app.middleware("http")(api_key_middleware)
+
     # Set the server URL for the OpenAPI schema
     app.openapi_schema = None  # Clear any existing schema
 
@@ -58,6 +80,83 @@ def create_app() -> FastAPI:
             description=app.description,
             routes=app.routes,
         )
+
+        # Ensure we extend, not replace, existing components
+        components = openapi_schema.setdefault("components", {})
+        security_schemes = components.setdefault("securitySchemes", {})
+        security_schemes["ApiKeyAuth"] = {
+            "type": "apiKey",
+            "in": "header",
+            "name": "x-meeting-baas-api-key",
+            "description": "MeetingBaas API key for authentication",
+        }
+        
+        schemas = components.setdefault("schemas", {})
+        schemas.update(
+            {
+                "PersonaImageRequest": {
+                    "type": "object",
+                    "required": ["name", "description"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the persona to generate an image for"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Detailed description of the persona's appearance and characteristics"
+                        },
+                        "gender": {
+                            "type": "string",
+                            "description": "Gender of the persona (optional)",
+                            "enum": ["male", "female", "non-binary"]
+                        },
+                        "characteristics": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            },
+                            "description": "List of specific characteristics or features of the persona"
+                        }
+                    }
+                },
+                "PersonaImageResponse": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Name of the persona"
+                        },
+                        "image_url": {
+                            "type": "string",
+                            "description": "URL of the generated image"
+                        },
+                        "generated_at": {
+                            "type": "string",
+                            "format": "date-time",
+                            "description": "Timestamp when the image was generated"
+                        }
+                    }
+                }
+            }
+        )
+
+        # Apply security globally
+        openapi_schema["security"] = [{"ApiKeyAuth": []}]
+
+        # Update the paths to include the required description parameter
+        if "paths" in openapi_schema:
+            if "/personas/generate-image" in openapi_schema["paths"]:
+                openapi_schema["paths"]["/personas/generate-image"]["post"]["requestBody"] = {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PersonaImageRequest"
+                            }
+                        }
+                    }
+                }
 
         openapi_schema["servers"] = [
             {
@@ -102,6 +201,11 @@ def create_app() -> FastAPI:
                     "path": "/bots/{bot_id}",
                     "method": "DELETE",
                     "description": "Remove a bot using its bot ID",
+                },
+                {
+                    "path": "/personas/generate-image",
+                    "method": "POST",
+                    "description": "Generate a persona image",
                 },
                 {"path": "/", "method": "GET", "description": "API root endpoint"},
                 {

@@ -19,7 +19,6 @@ class BotRequest(BaseModel):
         None,
         description="List of persona names to use. The first available will be selected.",
     )
-    meeting_baas_api_key: str
     bot_image: Optional[str] = None
     entry_message: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
@@ -33,14 +32,12 @@ class BotRequest(BaseModel):
                 "meeting_url": "https://meet.google.com/abc-defg-hij",
                 "bot_name": "Meeting Assistant",
                 "personas": ["helpful_assistant", "meeting_facilitator"],
-                "meeting_baas_api_key": "mb_api_xxxxxxxxxxxxxxxxxxxxxxxx",
                 "bot_image": "https://example.com/bot-avatar.png",
                 "entry_message": "Hello! I'm here to assist with the meeting.",
                 "enable_tools": True,
                 "extra": {"company": "ACME Corp", "meeting_purpose": "Weekly sync"},
             }
         }
-
 
 class JoinResponse(BaseModel):
     """Response model for a bot joining a meeting"""
@@ -60,9 +57,6 @@ class LeaveResponse(BaseModel):
 class LeaveBotRequest(BaseModel):
     """Request model for making a bot leave a meeting"""
 
-    meeting_baas_api_key: str = Field(
-        ..., description="Your MeetingBaas API key for authentication"
-    )
     bot_id: Optional[str] = Field(
         None,
         description="The MeetingBaas bot ID to remove from the meeting. This will also close the WebSocket connection made through Pipecat by this bot.",
@@ -72,7 +66,7 @@ class LeaveBotRequest(BaseModel):
 class PersonaImageRequest(BaseModel):
     """Request model for generating persona images."""
     name: str = Field(..., description="Name of the persona")
-    description: Optional[str] = Field(None, description="Description of the persona")
+    description: str = Field(None, description="Description of the persona")
     gender: Optional[str] = Field(None, description="Gender of the persona")
     characteristics: Optional[List[str]] = Field(None, description="List of characteristics like blue eyes, etc.")
 

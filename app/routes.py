@@ -63,11 +63,8 @@ async def join_meeting(request: BotRequest, client_request: Request):
             status_code=400,
         )
 
-    if not request.meeting_baas_api_key:
-        return JSONResponse(
-            content={"message": "MeetingBaas API key is required", "status": "error"},
-            status_code=400,
-        )
+    # Get API key from request state (set by middleware)
+    api_key = client_request.state.api_key
 
     # Log local dev mode status
     if LOCAL_DEV_MODE:
@@ -170,7 +167,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
         websocket_url=websocket_url,
         bot_id=bot_client_id,
         persona_name=persona.get("name", persona_name),  # Use persona display name
-        api_key=request.meeting_baas_api_key,
+        api_key=api_key,
         bot_image=bot_image_str,  # Use the pre-stringified value
         entry_message=request.entry_message,
         extra=request.extra,
@@ -219,6 +216,7 @@ async def join_meeting(request: BotRequest, client_request: Request):
 async def leave_bot(
     bot_id: str,
     request: LeaveBotRequest,
+    client_request: Request,
 ):
     """
     Remove a bot from a meeting by its ID.
@@ -229,6 +227,8 @@ async def leave_bot(
     3. Terminate the associated Pipecat process
     """
     logger.info(f"Removing bot with ID: {bot_id}")
+    # Get API key from request state (set by middleware)
+    api_key = client_request.state.api_key
 
     # Verify we have the bot_id
     if not bot_id and not request.bot_id:
@@ -262,7 +262,7 @@ async def leave_bot(
         logger.info(f"Removing bot with ID: {meetingbaas_bot_id} from MeetingBaas API")
         result = leave_meeting_bot(
             bot_id=meetingbaas_bot_id,
-            api_key=request.meeting_baas_api_key,
+            api_key=api_key,
         )
         if not result:
             success = False
@@ -270,7 +270,7 @@ async def leave_bot(
                 f"Failed to remove bot {meetingbaas_bot_id} from MeetingBaas API"
             )
     else:
-        logger.warning("No MeetingBaas bot ID found, skipping API call")
+        logger.warning("No MeetingBaas bot ID or API key found, skipping API call")
 
     # 2. Close WebSocket connections if they exist
     if client_id:
