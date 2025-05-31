@@ -23,6 +23,7 @@ class BotRequest(BaseModel):
     entry_message: Optional[str] = None
     extra: Optional[Dict[str, Any]] = None
     enable_tools: bool = True
+    llm_prompt: Optional[str] = None
 
     # NOTE: streaming_audio_frequency is intentionally excluded and handled internally
 
@@ -36,6 +37,8 @@ class BotRequest(BaseModel):
                 "entry_message": "Hello! I'm here to assist with the meeting.",
                 "enable_tools": True,
                 "extra": {"company": "ACME Corp", "meeting_purpose": "Weekly sync"},
+                "llm_prompt": "You are Meeting Assistant, a concise and professional \
+                AI bot that helps summarize key points and keep the meeting on track. Speak clearly and stay on topic."
             }
         }
 
