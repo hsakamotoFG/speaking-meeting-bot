@@ -150,6 +150,7 @@ async def main(
             ),
             vad_audio_passthrough=True,
             serializer=ProtobufFrameSerializer(),
+            timeout=300, 
         ),
     )
 
