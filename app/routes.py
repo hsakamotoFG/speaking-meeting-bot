@@ -465,7 +465,7 @@ async def leave_bot(
         400: {"description": "Invalid request data"},
     },
 )
-def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse:
+async def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse:
     """Generate an image for a persona using Replicate."""
     try:
         # Build the prompt from available fields
