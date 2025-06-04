@@ -488,17 +488,17 @@ async def generate_persona_image(request: PersonaImageRequest) -> PersonaImageRe
         prompt += ". High quality, single person, only face and shoulders, centered, neutral background, avoid borders."
 
         # Generate the image
-        image_generation_result = image_service.generate_persona_image(
+        image_generation_result = await image_service.generate_persona_image(
             name=name, prompt=prompt, style="realistic", size=(512, 512)
         )
 
-        if not image_generation_result["success"]:
+        if not image_generation_result: # Check if the string is empty/None
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Failed to generate image: {image_generation_result.get('error', 'Unknown error')}"
+                detail="Failed to generate image: No URL returned."
             )
 
-        image_url = image_generation_result["image_url"]
+        image_url = image_generation_result # Use the string directly
 
         return PersonaImageResponse(
             name=name,
