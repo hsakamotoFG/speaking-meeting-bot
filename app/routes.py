@@ -36,7 +36,7 @@ from utils.ngrok import (
 from config.prompts import PERSONA_INTERACTION_INSTRUCTIONS
 
 # Import the new persona detail extraction service
-from app.services.persona_detail_extraction import extract_details as extract_persona_details_from_prompt
+from app.services.persona_detail_extraction import extract_persona_details_from_prompt
 
 router = APIRouter()
 
@@ -106,130 +106,112 @@ async def join_meeting(request: BotRequest, client_request: Request):
         update_ngrok_client_id(temp_client_id, bot_client_id)
         log_ngrok_status()
 
-    # --- Start of Revised Persona and Prompt Selection Logic ---
+    # --- Streamlined Persona and Prompt Resolution Logic ---
+    final_prompt: str = ""
+    resolved_persona_data: Dict[str, Any] = {}
+    persona_name_for_logging: str = "Unknown"
 
-    final_llm_prompt: str
-    resolved_persona_name: str # The name of the persona used for attributes
-    resolved_persona_data: Dict[str, Any]
-    prompt_derived_details: Optional[Dict[str, Any]] = None # To store details parsed from prompt (conceptual)
+    if request.prompt: # Case 1: Custom prompt provided (dynamic persona)
+        logger.info(f"Processing custom prompt for bot {bot_client_id}")
+        prompt_derived_details = await extract_persona_details_from_prompt(request.prompt)
 
-    # 1. Determine the final LLM prompt and extract details if custom prompt is used
-    if request.llm_prompt:
-        final_llm_prompt = request.llm_prompt
-        logger.info(f"Using custom LLM prompt for bot {bot_client_id}")
-
-        # Extract persona details from the custom prompt using the new service
-        prompt_derived_details = await extract_persona_details_from_prompt(final_llm_prompt)
-        if prompt_derived_details:
-           logger.info(f"Prompt derived details: {prompt_derived_details}")
+        if prompt_derived_details and isinstance(prompt_derived_details, dict): # Ensure it's a dict
+            # Construct resolved_persona_data from derived details
+            resolved_persona_data = {
+                "name": prompt_derived_details.get("name", "Bot"),
+                "prompt": request.prompt, # Store original request prompt as the base prompt for dynamic persona
+                "description": prompt_derived_details.get("description", request.prompt), # Use derived description or fallback to full prompt
+                "gender": prompt_derived_details.get("gender", "male"),
+                "characteristics": prompt_derived_details.get("characteristics", []), # Ensure it's a list
+                "image": None, # Will be generated/resolved later
+                "cartesia_voice_id": None, # Will be matched later
+                "relevant_links": [],
+                "additional_content": None,
+                "is_temporary": True # Mark as temporary persona
+            }
+            persona_name_for_logging = resolved_persona_data["name"]
+            final_prompt = request.prompt + PERSONA_INTERACTION_INSTRUCTIONS
+            logger.info(f"Dynamically created persona '{persona_name_for_logging}' from prompt.")
         else:
-           logger.warning("Failed to extract persona details from custom prompt.")
+            # Fallback if prompt details extraction fails or returns unexpected type
+            logger.warning("Failed to extract persona details from custom prompt or received unexpected type. Falling back to default bot persona.")
+            resolved_persona_data = persona_manager.get_persona("baas_onboarder")
+            resolved_persona_data["is_temporary"] = False # Ensure fallback is not marked temporary
+            persona_name_for_logging = resolved_persona_data.get("name", "baas_onboarder")
+            final_prompt = resolved_persona_data["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
 
-    else:
-        # If no custom prompt, select persona based on request.personas, then bot_name, then random
+    else: # Case 2: No custom prompt, use pre-defined persona
+        resolved_persona_name: str
+
+        # Priority: request.personas > request.bot_name > random > baas_onboarder
         if request.personas and len(request.personas) > 0:
             resolved_persona_name = request.personas[0]
-            logger.info(f"Using specified persona '{resolved_persona_name}' for prompt and attributes")
+            logger.info(f"Using specified persona '{resolved_persona_name}' for bot.")
         elif request.bot_name and request.bot_name in persona_manager.personas:
-             resolved_persona_name = request.bot_name
-             logger.info(f"Using bot_name as persona '{resolved_persona_name}' for prompt and attributes")
+            resolved_persona_name = request.bot_name
+            logger.info(f"Using bot_name as persona '{resolved_persona_name}' for bot.")
         else:
-            # Select a random persona for prompt and attributes
             available_personas = list(persona_manager.personas.keys())
             if available_personas:
                 resolved_persona_name = random.choice(available_personas)
-                logger.info(f"No persona specified, using random persona '{resolved_persona_name}' for prompt and attributes")
+                logger.info(f"No persona specified, using random persona '{resolved_persona_name}' for bot.")
             else:
-                 # Fallback to baas_onboarder if no personas are available
                 resolved_persona_name = "baas_onboarder"
-                logger.warning("No personas found, using fallback persona: baas_onboarder")
+                logger.warning("No personas found, using fallback persona: baas_onboarder.")
 
-        # Get the persona data for the resolved name to construct the prompt
         try:
             resolved_persona_data = persona_manager.get_persona(resolved_persona_name)
-            final_llm_prompt = resolved_persona_data["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
-            logger.info(f"Using persona prompt for bot {bot_client_id}")
+            resolved_persona_data["is_temporary"] = False # Mark as not temporary
+            persona_name_for_logging = resolved_persona_data.get("name", resolved_persona_name)
+            final_prompt = resolved_persona_data["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
+            logger.info(f"Using pre-defined persona '{persona_name_for_logging}'.")
         except KeyError as e:
-             logger.error(f"Resolved persona '{resolved_persona_name}' not found for prompt construction: {e}")
-             # Fallback to baas_onboarder prompt if the resolved one is missing
-             resolved_persona_name = "baas_onboarder"
-             logger.warning(f"Falling back to persona '{resolved_persona_name}' for prompt.")
-             resolved_persona_data = persona_manager.get_persona(resolved_persona_name)
-             final_llm_prompt = resolved_persona_data["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
-             logger.info(f"Using fallback persona prompt for bot {bot_client_id}")
+            logger.error(f"Resolved persona '{resolved_persona_name}' not found: {e}. Falling back to baas_onboarder.")
+            resolved_persona_data = persona_manager.get_persona("baas_onboarder")
+            resolved_persona_data["is_temporary"] = False # Ensure fallback is not marked temporary
+            persona_name_for_logging = resolved_persona_data.get("name", "baas_onboarder")
+            final_prompt = resolved_persona_data["prompt"] + PERSONA_INTERACTION_INSTRUCTIONS
+            logger.info(f"Using fallback persona '{persona_name_for_logging}'.")
 
-    # 2. Resolve Persona Data for Attributes (voice, image, etc.) -- can be independent of prompt source
-    persona_for_attributes_name: str
-
-    # Priority: request.personas > prompt_derived_details.name (if available) > request.bot_name > random/baas_onboarder
-    if request.personas and len(request.personas) > 0:
-        persona_for_attributes_name = request.personas[0]
-        logger.info(f"Using specified persona '{persona_for_attributes_name}' for attributes")
-    elif prompt_derived_details and prompt_derived_details.get("name"):
-        # Attempt to use the name derived from the prompt
-        derived_name = prompt_derived_details["name"].lower().replace(" ", "_")
-        
-        try:
-            # Attempt to get persona data using the derived name
-            resolved_persona_data = persona_manager.get_persona(derived_name)
-            persona_for_attributes_name = resolved_persona_data.get("name", derived_name) # Use display name from data if available
-            logger.info(f"Using prompt-derived persona '{persona_for_attributes_name}' for attributes")
-        except KeyError:
-            # Derived persona name not found in existing personas. Create temporary persona data.
-            logger.info(f"Prompt-derived persona '{derived_name}' not found in existing personas. Creating temporary persona data.")
-
-            # Use details from prompt_derived_details to construct temporary persona data
-            temp_persona_name = prompt_derived_details.get("name", "Generated Bot")
-
-            resolved_persona_data = {
-                "name": temp_persona_name, # Use the derived name or default
-                "prompt": final_llm_prompt, # Use the full custom prompt as the persona prompt
-                "image": None, # Temporary persona doesn't have a pre-existing image file
-                "cartesia_voice_id": None, # No specific voice ID resolved yet for temp persona
-                "gender": prompt_derived_details.get("gender", "male"), # Use derived gender, default to male
-                "relevant_links": [],
-                "additional_content": None # No additional content for temporary persona
-            }
-            persona_for_attributes_name = temp_persona_name # Set the name for attributes as the temporary name
-            logger.info(f"Created temporary persona data for '{persona_for_attributes_name}' from prompt details.")
-
-    elif request.bot_name and request.bot_name in persona_manager.personas:
-         persona_for_attributes_name = request.bot_name
-         logger.info(f"Using bot_name as persona for attributes: {persona_for_attributes_name}")
-         # Get persona data for this resolved name
-         resolved_persona_data = persona_manager.get_persona(persona_for_attributes_name)
-    else:
-        # Select a random persona for attributes if none specified or derived
-        available_personas = list(persona_manager.personas.keys())
-        if available_personas:
-            persona_for_attributes_name = random.choice(available_personas)
-            logger.info(f"No persona specified/derived, using random persona for attributes: {persona_for_attributes_name}")
-        else:
-            # Fallback to baas_onboarder if no personas are available at all
-            persona_for_attributes_name = "baas_onboarder"
-            logger.warning("No personas found, using fallback persona 'baas_onboarder' for attributes")
-
-            # Get the actual persona data based on the resolved name for attributes
+    # Populate image if not present
+    if not resolved_persona_data.get("image"):
+        image_prompt_desc = resolved_persona_data.get("description") or resolved_persona_data.get("prompt")
+        if image_prompt_desc:
+            logger.info(f"Attempting to generate image for '{persona_name_for_logging}' with prompt: {image_prompt_desc}")
             try:
-                resolved_persona_data = persona_manager.get_persona(persona_for_attributes_name)
-            except KeyError as e:
-                logger.error(f"Resolved persona '{persona_for_attributes_name}' not found for attributes: {e}")
-                # Fallback to baas_onboarder data if the resolved one is missing
-                persona_for_attributes_name = "baas_onboarder"
-                logger.warning(f"Falling back to persona '{persona_for_attributes_name}' data for attributes.")
-                resolved_persona_data = persona_manager.get_persona(persona_for_attributes_name)
+                generated_image = await image_service.generate_persona_image(
+                    name=resolved_persona_data.get("name", "Bot"), # Use persona's resolved name
+                    prompt=image_prompt_desc,
+                    style="cinematic, detailed, photorealistic, professional headshot",
+                    size=(512, 512)
+                )
 
-    # --- End of Revised Persona and Prompt Selection Logic ---
+                if generated_image:
+                    resolved_persona_data["image"] = generated_image
+                    logger.info(f"Generated image URL for '{persona_name_for_logging}': {generated_image}")
+                else:
+                    logger.warning(f"Image generation returned no URL.")
+                    resolved_persona_data["image"] = None # Ensure no invalid image data is stored
+            except Exception as e:
+                logger.error(f"Failed to generate image for '{persona_name_for_logging}': {e}")
+
+    # Populate voice ID if not present
+    if not resolved_persona_data.get("cartesia_voice_id"):
+        from config.voice_utils import VoiceUtils # Import here to avoid circular dependency issues
+        voice_utils = VoiceUtils()
+        cartesia_voice_id = await voice_utils.match_voice_to_persona(persona_details=resolved_persona_data) # Pass the whole dict
+        resolved_persona_data["cartesia_voice_id"] = cartesia_voice_id
+        logger.info(f"Resolved Cartesia voice ID for '{persona_name_for_logging}': {cartesia_voice_id}")
 
 
     # Store all relevant details in MEETING_DETAILS dictionary
     MEETING_DETAILS[bot_client_id] = {
         "meeting_url": request.meeting_url,
-        "persona_name": resolved_persona_data.get("name", persona_for_attributes_name), # Use display name from resolved data
+        "persona_name": resolved_persona_data.get("name", persona_name_for_logging), # Use display name from resolved data
         "meetingbaas_bot_id": None,  # Will be set after creation
         "enable_tools": request.enable_tools,
         "streaming_audio_frequency": streaming_audio_frequency,
-        "final_llm_prompt": final_llm_prompt, # This was determined earlier and is separate
+        "final_prompt": final_prompt, # This is the prompt with interaction instructions
         "persona_data": resolved_persona_data # Store the resolved persona data
     }
 
@@ -246,14 +228,14 @@ async def join_meeting(request: BotRequest, client_request: Request):
                 logger.error(f"Error converting persona image from resolved persona data to string: {e}")
                 bot_image = None
         # Only attempt to generate image if custom prompt was originally used AND details were derived
-        elif request.llm_prompt and prompt_derived_details:
+        elif request.prompt and prompt_derived_details:
             logger.info("Attempting to generate image based on custom LLM prompt derived details...")
             # Use details from prompt_derived_details to create a PersonaImageRequest
             try:
                 # Use derived details, falling back to defaults or original prompt where needed
                 image_request_data = PersonaImageRequest(
-                    name=prompt_derived_details.get("name", "Generated Bot"), 
-                    description=prompt_derived_details.get("description", request.llm_prompt), 
+                    name=prompt_derived_details.get("name", "Bot"), 
+                    description=prompt_derived_details.get("description", request.prompt), 
                     gender=prompt_derived_details.get("gender", "male"), 
                     characteristics=prompt_derived_details.get("characteristics", [])
                 )
@@ -268,24 +250,36 @@ async def join_meeting(request: BotRequest, client_request: Request):
                 # Add standard quality guidelines
                 image_prompt_desc += ". High quality, single person, only face and shoulders, centered, neutral background, avoid borders."
 
-                generated_image_url = image_service.generate_persona_image(
+                generated_image_url = await image_service.generate_persona_image(
                     name=image_request_data.name,
                     prompt=image_prompt_desc, 
                     style="realistic", 
                     size=(512, 512) 
                 )
-                bot_image = generated_image_url
-                logger.info(f"Generated image: {bot_image}")
+                if generated_image_url:
+                    bot_image = generated_image_url
+                    logger.info(f"Generated image: {bot_image}")
+                else:
+                    logger.error(f"Failed to generate image from prompt derived details: No URL returned.")
+                    bot_image = None
             except Exception as e:
                 logger.error(f"Failed to generate image from prompt derived details: {e}")
                 bot_image = None
 
-    # Ensure the bot_image is definitely a string or None before passing to create_meeting_bot
+    # Ensure the bot_image is definitely a string or None before passing to 'create_meeting_bot
     bot_image_str = str(bot_image) if bot_image is not None else None
     if bot_image_str is not None:
          logger.info(f"Final bot image URL: {bot_image_str}")
     else:
          logger.info("No bot image URL resolved.")
+
+    # Determine the final entry message
+    final_entry_message: Optional[str] = request.entry_message
+    if not final_entry_message and resolved_persona_data.get("entry_message"):
+        final_entry_message = resolved_persona_data.get("entry_message")
+    elif not final_entry_message and resolved_persona_data.get("is_temporary", False):
+        # For temporary personas without a specified entry_message, provide a dynamic default
+        final_entry_message = f"Hello, I'm {persona_name_for_logging}, ready to assist you throughout this session."
 
     # Create bot directly through MeetingBaas API
     # Use persona display name from resolved_persona_data for MeetingBaas API call
@@ -293,10 +287,10 @@ async def join_meeting(request: BotRequest, client_request: Request):
         meeting_url=request.meeting_url,
         websocket_url=websocket_url,
         bot_id=bot_client_id,
-        persona_name=resolved_persona_data.get("name", persona_for_attributes_name),  # Use resolved display name
+        persona_name=resolved_persona_data.get("name", persona_name_for_logging),  # Use resolved display name
         api_key=api_key,
         bot_image=bot_image_str,  # Use the pre-stringified value
-        entry_message=request.entry_message,
+        entry_message=final_entry_message,
         extra=request.extra,
         streaming_audio_frequency=streaming_audio_frequency,
     )
@@ -494,14 +488,22 @@ def generate_persona_image(request: PersonaImageRequest) -> PersonaImageResponse
         prompt += ". High quality, single person, only face and shoulders, centered, neutral background, avoid borders."
 
         # Generate the image
-        image_response = image_service.generate_persona_image(
+        image_generation_result = image_service.generate_persona_image(
             name=name, prompt=prompt, style="realistic", size=(512, 512)
         )
 
+        if not image_generation_result["success"]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Failed to generate image: {image_generation_result.get('error', 'Unknown error')}"
+            )
+
+        image_url = image_generation_result["image_url"]
+
         return PersonaImageResponse(
             name=name,
-            image_url=image_response,
-            generated_at=datetime.utcnow().isoformat(),
+            image_url=image_url,
+            generated_at=datetime.utcnow(),
         )
 
     except Exception as e:
