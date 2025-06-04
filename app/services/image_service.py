@@ -11,6 +11,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from config.image_uploader import UTFSUploader
 from config.prompts import IMAGE_NEGATIVE_PROMPT
+import asyncio
 
 
 # Load environment variables
@@ -33,7 +34,7 @@ class ImageService:
         os.environ["REPLICATE_API_TOKEN"] = self.replicate_key
         logger.info("Initialized Replicate client and UTFSUploader for image generation")
     
-    def generate_persona_image(
+    async def generate_persona_image(
         self,
         name: str,
         prompt: str,
@@ -48,7 +49,7 @@ class ImageService:
             logger.info(f"Generating image with prompt: {full_prompt}")
 
             # Generate image using Replicate's SDXL
-            output = replicate.run(
+            output = await asyncio.to_thread(replicate.run,
                 "stability-ai/sdxl:7762fd07cf82c948538e41f63f77d685e02b063e37e496e96eefd46c929f9bdc",
                 input={
                     "prompt": full_prompt,
@@ -83,10 +84,13 @@ class ImageService:
                 f.write(response.content)
 
             # Upload to UTFS
-            file_url = self.uploader.upload_file(Path(temp_path))
+            file_url = await asyncio.to_thread(self.uploader.upload_file, Path(temp_path))
 
             # Clean up temporary file
-            os.remove(temp_path)
+            try:
+                os.remove(temp_path)
+            except FileNotFoundError:
+                logger.warning(f"Temporary image file not found for cleanup: {temp_path}")
 
             if not file_url:
                 raise ValueError("Failed to upload image to UTFS")

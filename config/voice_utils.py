@@ -2,7 +2,7 @@ import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 import aiohttp
 from dotenv import load_dotenv
@@ -104,14 +104,22 @@ class VoiceUtils:
             return None
 
     async def match_voice_to_persona(
-        self, persona_key: str, language_code: str = "en"
+        self, persona_key: Optional[str] = None, language_code: str = "en", persona_details: Optional[Dict[str, Any]] = None
     ) -> Optional[str]:
         """Use GPT-4 to match a persona with an appropriate voice"""
         try:
-            # Get persona details
-            persona = self.persona_manager.personas.get(persona_key)
+            persona = None
+            if persona_details:
+                # If persona_details are provided, use them directly (for temporary personas)
+                persona = persona_details
+                logger.info(f"Using provided persona details for voice matching.")
+            elif persona_key:
+                # Otherwise, try to get persona details from persona_manager
+                persona = self.persona_manager.personas.get(persona_key)
+                logger.info(f"Attempting to match voice for predefined persona: {persona_key}")
+
             if not persona:
-                logger.error(f"Persona {persona_key} not found")
+                logger.error(f"Persona not found, neither by key '{persona_key}' nor provided details.")
                 return None
 
             # Get available voices
