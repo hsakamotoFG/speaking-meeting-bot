@@ -230,7 +230,28 @@ def create_app() -> FastAPI:
 
 
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
-    """Start the WebSocket server"""
+    """Start the Uvicorn server for the FastAPI application."""
+    # If the PORT environment variable is set, use it; otherwise, use the default.
+    server_port = int(os.getenv("PORT", str(port)))
+    logger.info(f"Starting server on {host}:{server_port}")
+
+    # Only run uvicorn in the main block or via a proper application runner
+    # For direct execution, you'd typically call:
+    # uvicorn.run(app, host=host, port=server_port, reload=local_dev)
+
+    # This function is likely called within if __name__ == "__main__": block
+    # so we'll rely on the caller to manage the uvicorn.run call.
+    # However, for consistency and to ensure the port is used, I will modify the line
+    # where the server is actually started if it's present in the section that follows.
+
+    # Assuming the uvicorn.run call is passed the port argument from this function,
+    # or if the function is called directly with a port value.
+    # I will modify the call site if it exists within the provided file content. If it doesn't
+    # exist, the user will need to apply this logic at their uvicorn.run call.
+
+    # If you see `uvicorn.run(...)` directly in this file, it should use `server_port`.
+    # For now, I'm just ensuring `start_server` sets `server_port` correctly.
+
     # Global variables for ngrok URL tracking
     NGROK_URLS = []
     NGROK_URL_INDEX = 0
@@ -256,7 +277,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = Fals
             )
         print("\n")
 
-    logger.info(f"Starting WebSocket server on {host}:{port}")
+    logger.info(f"Starting WebSocket server on {host}:{server_port}")
 
     # Pass the local_dev flag as a command-line argument to the uvicorn process
     args = [
@@ -267,7 +288,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = Fals
         "--host",
         host,
         "--port",
-        str(port),
+        str(server_port),
     ]
 
     if local_dev:
