@@ -232,7 +232,14 @@ def create_app() -> FastAPI:
 def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
     """Start the Uvicorn server for the FastAPI application."""
     # If the PORT environment variable is set, use it; otherwise, use the default.
-    server_port = int(os.getenv("PORT", str(port)))
+    try:
+        server_port = int(os.getenv("PORT", str(port)))
+    except ValueError:
+        logger.error(
+            f"Invalid value for PORT environment variable: {os.getenv("PORT")}. "
+            f"Falling back to default port {port}."
+        )
+        server_port = port
     logger.info(f"Starting server on {host}:{server_port}")
 
     # Global variables for ngrok URL tracking
