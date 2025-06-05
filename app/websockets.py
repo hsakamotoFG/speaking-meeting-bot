@@ -50,7 +50,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             logger.info(f"Pipecat process already running for client {client_id}")
         else:
             # Start Pipecat process if not already running
-            pipecat_websocket_url = f"ws://localhost:8766/pipecat/{client_id}"
+            pipecat_websocket_url = f"ws://localhost:7014/pipecat/{client_id}"
             process = start_pipecat_process(
                 client_id=client_id,
                 websocket_url=pipecat_websocket_url,
@@ -80,7 +80,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for client {client_id}")
     except Exception as e:
-        logger.error(f"Error in WebSocket connection: {e}")
+        logger.error(f"Error in WebSocket connection: {e} (repr: {repr(e)})")
     finally:
         # Clean up
         if client_id in PIPECAT_PROCESSES:
