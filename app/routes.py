@@ -203,6 +203,11 @@ async def join_meeting(request: BotRequest, client_request: Request):
         resolved_persona_data["cartesia_voice_id"] = cartesia_voice_id
         logger.info(f"Resolved Cartesia voice ID for '{persona_name_for_logging}': {cartesia_voice_id}")
 
+    logger.info(f"Final resolved persona data for Pipecat process:")
+    logger.info(f"  Name: {resolved_persona_data.get('name')}")
+    logger.info(f"  Image: {resolved_persona_data.get('image')}")
+    logger.info(f"  Voice ID: {resolved_persona_data.get('cartesia_voice_id')}")
+    logger.info(f"  Is Temporary: {resolved_persona_data.get('is_temporary')}")
 
     # Store all relevant details in MEETING_DETAILS dictionary
     MEETING_DETAILS[bot_client_id] = (
@@ -304,6 +309,21 @@ async def join_meeting(request: BotRequest, client_request: Request):
         logger.info(f"Bot created with MeetingBaas bot_id: {meetingbaas_bot_id}")
         logger.info(f"Internal client_id for WebSocket connections: {bot_client_id}")
 
+        # Start the Pipecat process as a subprocess
+        process = start_pipecat_process(
+            client_id=bot_client_id,
+            websocket_url=websocket_url,
+            meeting_url=request.meeting_url,
+            persona_data=resolved_persona_data,
+            streaming_audio_frequency=streaming_audio_frequency,
+            enable_tools=request.enable_tools,
+            api_key=api_key,
+            meetingbaas_bot_id=meetingbaas_bot_id,
+        )
+
+        # Store the process for later termination
+        PIPECAT_PROCESSES[bot_client_id] = process
+
         # Return only the bot_id in the response
         return JoinResponse(bot_id=meetingbaas_bot_id)
     else:
@@ -367,7 +387,7 @@ async def leave_bot(
     # Look through MEETING_DETAILS to find the client ID for this bot ID
     for cid, details in MEETING_DETAILS.items():
         # Check if the stored meetingbaas_bot_id matches
-        if len(details) >= 3 and details[2] == meetingbaas_bot_id:
+        if details.get("meetingbaas_bot_id") == meetingbaas_bot_id:
             client_id = cid
             logger.info(f"Found client ID {client_id} for bot ID {meetingbaas_bot_id}")
             break
