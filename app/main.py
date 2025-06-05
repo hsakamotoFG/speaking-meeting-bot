@@ -236,7 +236,7 @@ def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = Fals
         server_port = int(os.getenv("PORT", str(port)))
     except ValueError:
         logger.error(
-            f"Invalid value for PORT environment variable: {os.getenv("PORT")}. "
+            f"Invalid value for PORT environment variable: {os.getenv('PORT')}. "
             f"Falling back to default port {port}."
         )
         server_port = port
