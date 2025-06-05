@@ -205,15 +205,13 @@ async def join_meeting(request: BotRequest, client_request: Request):
 
 
     # Store all relevant details in MEETING_DETAILS dictionary
-    MEETING_DETAILS[bot_client_id] = {
-        "meeting_url": request.meeting_url,
-        "persona_name": resolved_persona_data.get("name", persona_name_for_logging), # Use display name from resolved data
-        "meetingbaas_bot_id": None,  # Will be set after creation
-        "enable_tools": request.enable_tools,
-        "streaming_audio_frequency": streaming_audio_frequency,
-        "final_prompt": final_prompt, # This is the prompt with interaction instructions
-        "persona_data": resolved_persona_data # Store the resolved persona data
-    }
+    MEETING_DETAILS[bot_client_id] = (
+        request.meeting_url,
+        resolved_persona_data.get("name", persona_name_for_logging),  # Use display name from resolved data
+        None,  # meetingbaas_bot_id, will be set after creation
+        request.enable_tools,
+        streaming_audio_frequency
+    )
 
     # Get image URL: Prioritize request.bot_image > persona_data.image > generate_image (if custom prompt and details derived)
     bot_image = request.bot_image
@@ -297,7 +295,10 @@ async def join_meeting(request: BotRequest, client_request: Request):
 
     if meetingbaas_bot_id:
         # Update the meetingbaas_bot_id in MEETING_DETAILS
-        MEETING_DETAILS[bot_client_id]["meetingbaas_bot_id"] = meetingbaas_bot_id
+        # Convert tuple to list to allow assignment
+        details = list(MEETING_DETAILS[bot_client_id])
+        details[2] = meetingbaas_bot_id
+        MEETING_DETAILS[bot_client_id] = tuple(details)
 
         # Log the client_id for internal reference
         logger.info(f"Bot created with MeetingBaas bot_id: {meetingbaas_bot_id}")
