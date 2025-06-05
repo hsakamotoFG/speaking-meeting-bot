@@ -4,19 +4,23 @@ import os
 import subprocess
 import sys
 import time
-from typing import Optional
+from typing import Any, Dict
+import json
 
 from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import logger
 
+PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}
 
 def start_pipecat_process(
     client_id: str,
     websocket_url: str,
     meeting_url: str,
-    persona_name: str,
-    streaming_audio_frequency: str = "16khz",
-    enable_tools: bool = False,
+    persona_data: Dict[str, Any],
+    streaming_audio_frequency: str,
+    enable_tools: bool,
+    api_key: str = "",
+    meetingbaas_bot_id: str = "",
 ) -> subprocess.Popen:
     """
     Start a Pipecat process for a client.
@@ -25,38 +29,40 @@ def start_pipecat_process(
         client_id: Unique ID for the client
         websocket_url: WebSocket URL for communication
         meeting_url: Meeting URL to join
-        persona_name: Name of the persona to use
+        persona_data: Data for the persona to use
         streaming_audio_frequency: Audio sampling frequency
         enable_tools: Whether to enable function calling tools
+        api_key: API key for authentication
+        meetingbaas_bot_id: ID of the meetingbaas bot
 
     Returns:
         The subprocess.Popen object for the started process
     """
     logger.info(f"Starting Pipecat process for client {client_id}")
 
+    # Convert persona_data to JSON string
+    persona_data_json = json.dumps(persona_data)
+
     # Construct the command to run the meetingbaas.py script
     script_path = os.path.join(
         os.path.dirname(__file__), "..", "scripts", "meetingbaas.py"
     )
 
-    # Get the persona's custom entry message
-    persona = persona_manager.get_persona(persona_name)
-
-    # Use the persona's display name (from README) instead of folder name
-    display_name = persona.get("name", persona_name)
+    # Use the persona's display name directly from persona_data
+    display_name = persona_data.get("name", "Unknown Bot")
 
     # Build command with all parameters
     command = [
         sys.executable,
         script_path,
-        "--meeting-url",
-        meeting_url,
-        "--persona-name",
-        display_name,
-        "--entry-message",
-        persona.get("entry_message", ""),
+        "--client-id",
+        client_id,
         "--websocket-url",
         websocket_url,
+        "--meeting-url",
+        meeting_url,
+        "--persona-data-json",
+        persona_data_json,
         "--streaming-audio-frequency",
         streaming_audio_frequency,
     ]
@@ -65,11 +71,29 @@ def start_pipecat_process(
     if enable_tools:
         command.append("--enable-tools")
 
+    if api_key:
+        command.extend(["--api-key", api_key])
+
+    if meetingbaas_bot_id:
+        command.extend(["--meetingbaas-bot-id", meetingbaas_bot_id])
+
     # Start the process
     process = subprocess.Popen(
         command,
         env=os.environ.copy(),  # Copy the current environment
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,  # Capture output as text
     )
+
+    # Log stdout and stderr asynchronously
+    async def log_output():
+        async for line in process.stdout:
+            logger.info(f"[Pipecat Bot - {client_id}]: {line.strip()}")
+        async for line in process.stderr:
+            logger.error(f"[Pipecat Bot - {client_id} ERR]: {line.strip()}")
+
+    # asyncio.create_task(log_output())
 
     logger.info(f"Started Pipecat process with PID {process.pid}")
     return process

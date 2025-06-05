@@ -9,22 +9,23 @@ import pytz
 from dotenv import load_dotenv
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
+from pipecat.vad import SileroVADAnalyzer, VADParams
 from pipecat.frames.frames import LLMMessagesFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
-from pipecat.serializers.protobuf import ProtobufFrameSerializer
-from pipecat.services.cartesia.tts import CartesiaTTSService
-from pipecat.services.deepgram.stt import DeepgramSTTService
+from pipecat.aggregators.llm_response import OpenAILLMContext
+from pipecat.serializers import ProtobufFrameSerializer
+from pipecat.services.tts import CartesiaTTSService
+from pipecat.services.stt import DeepgramSTTService
 
 # from pipecat.services.gladia.stt import GladiaSTTService
-from pipecat.services.openai.llm import OpenAILLMService
-from pipecat.transports.network.websocket_client import (
+from pipecat.services.llm import OpenAILLMService
+from pipecat.transports.websocket import (
     WebsocketClientParams,
     WebsocketClientTransport,
 )
+from pipecat.audio.base import BaseAudioResampler
 
 from config.persona_utils import PersonaManager
 from config.prompts import DEFAULT_SYSTEM_PROMPT
@@ -182,6 +183,7 @@ async def main(
     llm = OpenAILLMService(
         api_key=os.getenv("OPENAI_API_KEY"),
         model="gpt-4-turbo-preview",
+        run_in_parallel=False,
     )
 
     # Register function tools if enabled
@@ -298,7 +300,7 @@ async def main(
     )
 
     # Create and run task
-    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
+    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True, check_dangling_tasks=True))
     runner = PipelineRunner()
 
     # Handle the initial greeting if needed
