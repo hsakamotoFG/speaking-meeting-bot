@@ -229,7 +229,7 @@ def create_app() -> FastAPI:
     return app
 
 
-def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = False):
+def start_server(host: str = "0.0.0.0", port: int = 7014, local_dev: bool = False):
     """Start the Uvicorn server for the FastAPI application."""
     # If the PORT environment variable is set, use it; otherwise, use the default.
     try:
@@ -300,7 +300,12 @@ def start_server(host: str = "0.0.0.0", port: int = 8766, local_dev: bool = Fals
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Start the MeetingBaas Bot API server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8766, help="Port to listen on")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.getenv("PORT", "7014")), # Read from env var, fallback to 7014
+        help="Port to listen on",
+    )
     parser.add_argument(
         "--local-dev",
         action="store_true",
