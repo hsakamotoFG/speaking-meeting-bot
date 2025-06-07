@@ -387,7 +387,7 @@ async def leave_bot(
     # Look through MEETING_DETAILS to find the client ID for this bot ID
     for cid, details in MEETING_DETAILS.items():
         # Check if the stored meetingbaas_bot_id matches
-        if details.get("meetingbaas_bot_id") == meetingbaas_bot_id:
+        if details[2] == meetingbaas_bot_id: # Accessing tuple element by index
             client_id = cid
             logger.info(f"Found client ID {client_id} for bot ID {meetingbaas_bot_id}")
             break
