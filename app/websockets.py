@@ -55,9 +55,11 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 client_id=client_id,
                 websocket_url=pipecat_websocket_url,
                 meeting_url=meeting_url,
-                persona_name=persona_name,
+                persona_data={"name": persona_name},
                 streaming_audio_frequency=streaming_audio_frequency,
                 enable_tools=enable_tools,
+                api_key="",
+                meetingbaas_bot_id=meetingbaas_bot_id or "",
             )
 
             # Store the process for cleanup
@@ -65,7 +67,15 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 
         # Process messages
         while True:
-            message = await websocket.receive()
+            try:
+                message = await websocket.receive()
+            except RuntimeError as e:
+                if "Cannot call \"receive\" once a disconnect message has been received" in str(e):
+                    logger.info(f"WebSocket for client {client_id} closed by client.")
+                    break
+                raise
+            
+            # logger.info(f"Received message type: {type(message)}, keys: {list(message.keys())}")
             if "bytes" in message:
                 audio_data = message["bytes"]
                 logger.debug(

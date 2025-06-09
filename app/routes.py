@@ -310,9 +310,11 @@ async def join_meeting(request: BotRequest, client_request: Request):
         logger.info(f"Internal client_id for WebSocket connections: {bot_client_id}")
 
         # Start the Pipecat process as a subprocess
+        # The Pipecat process should connect to our LOCAL WebSocket server, not the external one
+        pipecat_websocket_url = f"ws://localhost:7014/pipecat/{bot_client_id}"
         process = start_pipecat_process(
             client_id=bot_client_id,
-            websocket_url=websocket_url,
+            websocket_url=pipecat_websocket_url,  # Use internal URL, not external
             meeting_url=request.meeting_url,
             persona_data=resolved_persona_data,
             streaming_audio_frequency=streaming_audio_frequency,
