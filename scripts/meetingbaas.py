@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
-from pipecat.frames.frames import LLMMessagesFrame, TTSAudioRawFrame, TextFrame
+from pipecat.frames.frames import LLMMessagesFrame, TextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -171,23 +171,23 @@ async def main(
             timeout=300,
         ),
     )
-    log_and_flush(logging.INFO, f"[TRANSPORT] WebSocket transport initialized")
+    log_and_flush(logging.INFO, "[TRANSPORT] WebSocket transport initialized")
     log_and_flush(logging.INFO, f"[TRANSPORT] URI: {websocket_url}")
     log_and_flush(logging.INFO, f"[TRANSPORT] Audio out enabled: True, sample_rate: {output_sample_rate}")
-    log_and_flush(logging.INFO, f"[TRANSPORT] Audio in enabled: True, VAD sample_rate: 16000")
+    log_and_flush(logging.INFO, "[TRANSPORT] Audio in enabled: True, VAD sample_rate: 16000")
 
     # Add WebSocket connection event handlers for debugging
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
-        log_and_flush(logging.INFO, f"[WEBSOCKET] Client connected to WebSocket server")
+        log_and_flush(logging.INFO, "[WEBSOCKET] Client connected to WebSocket server")
         
     @transport.event_handler("on_client_disconnected") 
     async def on_client_disconnected(transport, client):
-        log_and_flush(logging.INFO, f"[WEBSOCKET] Client disconnected from WebSocket server")
+        log_and_flush(logging.INFO, "[WEBSOCKET] Client disconnected from WebSocket server")
 
     @transport.event_handler("on_connection_established")
     async def on_connection_established(transport):
-        log_and_flush(logging.INFO, f"[WEBSOCKET] WebSocket connection established successfully")
+        log_and_flush(logging.INFO, "[WEBSOCKET] WebSocket connection established successfully")
         
     @transport.event_handler("on_connection_error")
     async def on_connection_error(transport, error):
@@ -340,11 +340,11 @@ async def main(
 
     pipeline = Pipeline([
         transport.input(),   # Add transport input to receive audio/data
-        stt,
-        user_aggregator,
-        llm,
-        tts,
-        assistant_aggregator,
+        wrapped_stt,
+        wrapped_user_agg,
+        wrapped_llm,
+        wrapped_tts,
+        wrapped_assistant_agg,
         transport.output(),  # Add transport output to send audio/data
     ])
 

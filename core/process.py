@@ -8,7 +8,6 @@ from typing import Any, Dict
 import json
 import threading
 
-from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import logger
 
 PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}

@@ -73,8 +73,8 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
                 if "Cannot call \"receive\" once a disconnect message has been received" in str(e):
                     logger.info(f"WebSocket for client {client_id} closed by client.")
                     break
-                else:
-                    raise
+                raise
+            
             # logger.info(f"Received message type: {type(message)}, keys: {list(message.keys())}")
             if "bytes" in message:
                 audio_data = message["bytes"]
