@@ -31,7 +31,6 @@ from config.prompts import DEFAULT_SYSTEM_PROMPT
 from meetingbaas_pipecat.utils.logger import configure_logger
 import sys
 import logging
-from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
 
 
 from pipecat.services.llm_service import FunctionCallParams
