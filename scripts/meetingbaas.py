@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
-from pipecat.frames.frames import LLMMessagesFrame
+from pipecat.frames.frames import LLMMessagesFrame, TTSAudioRawFrame, TextFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -117,9 +117,10 @@ async def main(
         websocket_url: Full WebSocket URL to connect to, including any path
         enable_tools: Whether to enable function tools like weather and time
     """
+    # Set TaskManager event loop FIRST, before any other pipecat operations
     from pipecat.utils.asyncio import TaskManager
     TaskManager.set_event_loop(TaskManager, asyncio.get_running_loop())
-    # Now safe to do anything else
+    
     log_and_flush(logging.INFO, f"[STARTUP] MeetingBaas bot launching with persona: {persona_name}")
     load_dotenv()
 
@@ -170,6 +171,27 @@ async def main(
             timeout=300,
         ),
     )
+    log_and_flush(logging.INFO, f"[TRANSPORT] WebSocket transport initialized")
+    log_and_flush(logging.INFO, f"[TRANSPORT] URI: {websocket_url}")
+    log_and_flush(logging.INFO, f"[TRANSPORT] Audio out enabled: True, sample_rate: {output_sample_rate}")
+    log_and_flush(logging.INFO, f"[TRANSPORT] Audio in enabled: True, VAD sample_rate: 16000")
+
+    # Add WebSocket connection event handlers for debugging
+    @transport.event_handler("on_client_connected")
+    async def on_client_connected(transport, client):
+        log_and_flush(logging.INFO, f"[WEBSOCKET] Client connected to WebSocket server")
+        
+    @transport.event_handler("on_client_disconnected") 
+    async def on_client_disconnected(transport, client):
+        log_and_flush(logging.INFO, f"[WEBSOCKET] Client disconnected from WebSocket server")
+
+    @transport.event_handler("on_connection_established")
+    async def on_connection_established(transport):
+        log_and_flush(logging.INFO, f"[WEBSOCKET] WebSocket connection established successfully")
+        
+    @transport.event_handler("on_connection_error")
+    async def on_connection_error(transport, error):
+        log_and_flush(logging.ERROR, f"[WEBSOCKET] Connection error: {error}")
 
     persona_manager = PersonaManager()
     persona = persona_manager.get_persona(persona_name)
@@ -193,12 +215,14 @@ async def main(
         sample_rate=output_sample_rate,
         speed="normal",
     )
+    log_and_flush(logging.INFO, f"[TTS] Cartesia TTS initialized with sample_rate={output_sample_rate}, voice_id={voice_id}")
 
     llm = OpenAILLMService(
         api_key=os.getenv("OPENAI_API_KEY"),
         model="gpt-4-turbo-preview",
         run_in_parallel=False,
     )
+    log_and_flush(logging.INFO, f"[LLM] OpenAI LLM initialized with model=gpt-4-turbo-preview")
 
     if enable_tools:
         log_and_flush(logging.INFO, "[TOOLS] Registering function tools")
@@ -315,34 +339,57 @@ async def main(
     wrapped_assistant_agg = LoggingStep(assistant_aggregator, "AssistantAggregator")
 
     pipeline = Pipeline([
+        transport.input(),   # Add transport input to receive audio/data
         stt,
         user_aggregator,
         llm,
         tts,
         assistant_aggregator,
+        transport.output(),  # Add transport output to send audio/data
     ])
 
     task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True, check_dangling_tasks=True))
     runner = PipelineRunner()
 
+    # Add a simple test to verify TTS is working
+    async def test_tts_output():
+        log_and_flush(logging.INFO, "[TEST] Testing TTS output directly")
+        try:
+            # Try to generate some test audio
+            test_text = "Testing TTS output"
+            log_and_flush(logging.INFO, f"[TEST] Generating TTS for: {test_text}")
+            # We'll let the pipeline handle this rather than calling TTS directly
+            await task.queue_frames([TextFrame(test_text)])
+            log_and_flush(logging.INFO, "[TEST] Test TTS frame queued")
+        except Exception as e:
+            log_and_flush(logging.ERROR, f"[TEST] TTS test failed: {e}")
+
     if entry_message:
         log_and_flush(logging.INFO, "[BOT] Bot will speak first with an introduction")
         initial_message = {"role": "user", "content": entry_message}
         async def queue_initial_message():
+            log_and_flush(logging.INFO, "[BOT] Waiting 2 seconds before sending initial message")
             await asyncio.sleep(2)
+            log_and_flush(logging.INFO, f"[BOT] Queuing initial message: {initial_message}")
             await task.queue_frames([LLMMessagesFrame([initial_message])])
-            log_and_flush(logging.INFO, "[BOT] Initial greeting message queued")
+            log_and_flush(logging.INFO, "[BOT] Initial greeting message queued successfully")
+            
+            # Also queue a simple TTS test
+            await asyncio.sleep(1)
+            await test_tts_output()
         asyncio.create_task(queue_initial_message())
-
-    # After creating your task:
-    debug_observer = DebugLogObserver()
-    await task.add_observer(debug_observer)
+    else:
+        log_and_flush(logging.INFO, "[BOT] No entry message configured")
 
     try:
         log_and_flush(logging.INFO, "[RUN] Starting pipeline runner...")
+        log_and_flush(logging.INFO, f"[RUN] Pipeline components: {[type(c).__name__ for c in pipeline._processors]}")
+        log_and_flush(logging.INFO, "[RUN] Running pipeline with integrated transport...")
         await runner.run(task)
     except Exception as e:
         log_and_flush(logging.ERROR, f"[ERROR] Exception in pipeline: {e}")
+        import traceback
+        log_and_flush(logging.ERROR, f"[ERROR] Traceback: {traceback.format_exc()}")
         raise
 
 
