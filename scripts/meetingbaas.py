@@ -9,38 +9,55 @@ import pytz
 from dotenv import load_dotenv
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
-from pipecat.vad import SileroVADAnalyzer, VADParams
+from pipecat.audio.vad.silero import SileroVADAnalyzer, VADParams
 from pipecat.frames.frames import LLMMessagesFrame
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
-from pipecat.aggregators.llm_response import OpenAILLMContext
-from pipecat.serializers import ProtobufFrameSerializer
-from pipecat.services.tts import CartesiaTTSService
-from pipecat.services.stt import DeepgramSTTService
+from pipecat.processors.aggregators.openai_llm_context import OpenAILLMContext
+from pipecat.serializers.protobuf import ProtobufFrameSerializer
+from pipecat.services.cartesia.tts import CartesiaTTSService
+from pipecat.services.deepgram.stt import DeepgramSTTService
 
 # from pipecat.services.gladia.stt import GladiaSTTService
-from pipecat.services.llm import OpenAILLMService
-from pipecat.transports.websocket import (
+from pipecat.services.openai.llm import OpenAILLMService
+from pipecat.transports.network.websocket_client import (
     WebsocketClientParams,
     WebsocketClientTransport,
 )
-from pipecat.audio.base import BaseAudioResampler
 
 from config.persona_utils import PersonaManager
 from config.prompts import DEFAULT_SYSTEM_PROMPT
 from meetingbaas_pipecat.utils.logger import configure_logger
+import sys
+import logging
+from pipecat.observers.loggers.debug_log_observer import DebugLogObserver
+
+
+from pipecat.services.llm_service import FunctionCallParams
 
 load_dotenv(override=True)
 
 logger = configure_logger()
 
+# Ensure logs are flushed immediately and are human-readable
+handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter('[%(asctime)s] %(levelname)s | %(name)s:%(funcName)s:%(lineno)d | %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+handler.setFormatter(formatter)
+handler.setLevel(logging.INFO)
+logger.handlers = [handler]
+logger.propagate = False
+
+# Function to log and flush
+def log_and_flush(level, msg):
+    logger.log(level, msg)
+    for h in logger.handlers:
+        h.flush()
 
 # Function tool implementations
-async def get_weather(
-    function_name, tool_call_id, arguments, llm, context, result_callback
-):
+async def get_weather(params: FunctionCallParams):
     """Get the current weather for a location."""
+    arguments = params.arguments
     location = arguments["location"]
     format = arguments["format"]  # Default to Celsius if not specified
     unit = (
@@ -53,19 +70,18 @@ async def get_weather(
         async with session.get(url) as response:
             if response.status == 200:
                 weather_data = await response.text()
-                await result_callback(
+                await params.result_callback(
                     f"The weather in {location} is currently {weather_data} ({format.capitalize()})."
                 )
             else:
-                await result_callback(
+                await params.result_callback(
                     f"Failed to fetch the weather data for {location}."
                 )
 
 
-async def get_time(
-    function_name, tool_call_id, arguments, llm, context, result_callback
-):
+async def get_time(params: FunctionCallParams):
     """Get the current time for a location."""
+    arguments = params.arguments
     location = arguments["location"]
 
     # Set timezone based on the provided location
@@ -73,9 +89,9 @@ async def get_time(
         timezone = pytz.timezone(location)
         current_time = datetime.now(timezone)
         formatted_time = current_time.strftime("%Y-%m-%d %H:%M:%S")
-        await result_callback(f"The current time in {location} is {formatted_time}.")
+        await params.result_callback(f"The current time in {location} is {formatted_time}.")
     except pytz.UnknownTimeZoneError:
-        await result_callback(
+        await params.result_callback(
             f"Invalid location specified. Could not determine time for {location}."
         )
 
@@ -101,16 +117,16 @@ async def main(
         websocket_url: Full WebSocket URL to connect to, including any path
         enable_tools: Whether to enable function tools like weather and time
     """
-    # Load environment variables for credentials (OpenAI, etc.)
+    from pipecat.utils.asyncio import TaskManager
+    TaskManager.set_event_loop(TaskManager, asyncio.get_running_loop())
+    # Now safe to do anything else
+    log_and_flush(logging.INFO, f"[STARTUP] MeetingBaas bot launching with persona: {persona_name}")
     load_dotenv()
 
-    # Validate WebSocket URL
     if not websocket_url:
-        logger.error("Error: WebSocket URL not provided")
+        log_and_flush(logging.ERROR, "[ERROR] WebSocket URL not provided")
         return
-
-    logger.info(f"Using WebSocket URL: {websocket_url}")
-
+    log_and_flush(logging.INFO, f"[CONFIG] Using WebSocket URL: {websocket_url}")
     # Extract bot_id from the websocket_url if possible
     # Format is usually: ws://localhost:{PORT}/pipecat/{client_id} or the ngrok URL
     parts = websocket_url.split("/")
@@ -126,67 +142,56 @@ async def main(
         bot_id = parts[-1] if len(parts) > 3 else "unknown"
     logger.info(f"Using bot ID: {bot_id}")
 
-    # Set sample rate based on streaming_audio_frequency
+
     output_sample_rate = 24000 if streaming_audio_frequency == "24khz" else 16000
-    # Silero VAD only supports 16000 or 8000 Hz
     vad_sample_rate = 16000
+    log_and_flush(logging.INFO, f"[CONFIG] Audio frequency: {streaming_audio_frequency} (output: {output_sample_rate}, VAD: {vad_sample_rate})")
 
-    logger.info(
-        f"Using audio frequency: {streaming_audio_frequency} (output sample rate: {output_sample_rate}, VAD sample rate: {vad_sample_rate})"
-    )
+    print("Event loop set for Pipecat:", asyncio.get_running_loop())
 
-    # Create resampler for VAD if needed
-    resampler = None
-    if output_sample_rate != vad_sample_rate:
-        resampler = BaseAudioResampler()
-        logger.info(f"Created resampler for converting {output_sample_rate}Hz to {vad_sample_rate}Hz")
-
-    # Set up the WebSocket transport with correct sample rates - use the full WebSocket URL directly
     transport = WebsocketClientTransport(
         uri=websocket_url,
         params=WebsocketClientParams(
             audio_out_sample_rate=output_sample_rate,
             audio_out_enabled=True,
             add_wav_header=False,
-            vad_enabled=True,
+            audio_in_enabled=True,
             vad_analyzer=SileroVADAnalyzer(
-                sample_rate=16000,  # Must be either 8000 or 16000
+                sample_rate=16000,
                 params=VADParams(
-                    threshold=0.5,  # Confidence threshold for speech detection
-                    min_speech_duration_ms=250,  # Time in ms that speech must be detected
-                    min_silence_duration_ms=100,  # Time in ms of silence required
-                    min_volume=0.6,  # Minimum audio volume threshold
+                    threshold=0.5,
+                    min_speech_duration_ms=250,
+                    min_silence_duration_ms=100,
+                    min_volume=0.6,
                 ),
             ),
-            vad_audio_passthrough=True,
+            audio_in_passthrough=True,
             serializer=ProtobufFrameSerializer(),
-            timeout=300, 
+            timeout=300,
         ),
     )
 
-    # Get persona configuration
     persona_manager = PersonaManager()
     persona = persona_manager.get_persona(persona_name)
     if not persona:
-        logger.error(f"Persona '{persona_name}' not found")
+        log_and_flush(logging.ERROR, f"[ERROR] Persona '{persona_name}' not found")
         return
+    log_and_flush(logging.INFO, f"[PERSONA] Loaded persona: {persona_name}")
 
-    # Get additional content from persona
     additional_content = persona.get("additional_content", "")
     if additional_content:
-        logger.info("Found additional content for persona")
+        log_and_flush(logging.INFO, "[PERSONA] Found additional content for persona")
     else:
-        logger.info("No additional content found for persona")
+        log_and_flush(logging.INFO, "[PERSONA] No additional content found for persona")
 
-    # Get voice ID from persona if available, otherwise use env var
-    voice_id = persona.get("cartesia_voice_id") or os.getenv("CARTESIA_VOICE_ID")
-    logger.info(f"Using voice ID: {voice_id}")
+    voice_id = os.getenv("CARTESIA_VOICE_ID")
+    log_and_flush(logging.INFO, f"[PERSONA] Using voice ID: {voice_id}")
 
-    # Initialize services
     tts = CartesiaTTSService(
         api_key=os.getenv("CARTESIA_API_KEY"),
-        voice_id=voice_id,  # Use voice ID from persona
-        sample_rate=output_sample_rate,  # Use the same sample rate as transport
+        voice_id=voice_id,
+        sample_rate=output_sample_rate,
+        speed="normal",
     )
 
     llm = OpenAILLMService(
@@ -195,11 +200,8 @@ async def main(
         run_in_parallel=False,
     )
 
-    # Register function tools if enabled
     if enable_tools:
-        logger.info("Registering function tools")
-
-        # Register functions
+        log_and_flush(logging.INFO, "[TOOLS] Registering function tools")
         llm.register_function("get_weather", get_weather)
         llm.register_function("get_time", get_time)
 
@@ -236,19 +238,17 @@ async def main(
         # Create tools schema
         tools = ToolsSchema(standard_tools=[weather_function, time_function])
     else:
-        logger.info("Function tools are disabled")
+        log_and_flush(logging.INFO, "[TOOLS] Function tools are disabled")
         tools = None
 
-    # Add speech-to-text service
-    # Extract language code from persona if available
     language = persona.get("language_code", "en-US")
-    logger.info(f"Using language: {language}")
+    log_and_flush(logging.INFO, f"[PERSONA] Using language: {language}")
 
     stt = DeepgramSTTService(
         api_key=os.getenv("DEEPGRAM_API_KEY"),
         encoding="linear16" if streaming_audio_frequency == "16khz" else "linear24",
         sample_rate=output_sample_rate,
-        language=language,  # Use language from persona
+        language=language,
     )
     # stt = GladiaSTTService(
     #     api_key=os.getenv("GLADIA_API_KEY"),
@@ -257,9 +257,8 @@ async def main(
     #     language=language,  # Use language from persona
     # )
 
-    # Make sure we're setting a valid bot name
     bot_name = persona_name or "Bot"
-    logger.info(f"Using bot name: {bot_name}")
+    log_and_flush(logging.INFO, f"[BOT] Using bot name: {bot_name}")
 
     # Create a more comprehensive system prompt
     system_content = persona["prompt"]
@@ -295,43 +294,56 @@ async def main(
     user_aggregator = aggregator_pair.user()
     assistant_aggregator = aggregator_pair.assistant()
 
-    # Create pipeline using the single instances - adding STT service
-    pipeline = Pipeline(
-        [
-            transport.input(),
-            stt,  # Add speech-to-text service
-            user_aggregator,  # Process user input and update context
-            llm,
-            tts,
-            transport.output(),
-            assistant_aggregator,  # Store LLM responses in context
-        ]
-    )
+    # Log pipeline step data
+    def log_pipeline_step(step_name, data):
+        log_and_flush(logging.INFO, f"[PIPELINE] Step: {step_name}, Type: {type(data)}, Data: {str(data)[:120]}")
 
-    # Create and run task
+    # Wrap pipeline steps for logging
+    class LoggingStep:
+        def __init__(self, step, name):
+            self.step = step
+            self.name = name
+        async def __call__(self, *args, **kwargs):
+            result = await self.step(*args, **kwargs)
+            log_pipeline_step(self.name, result)
+            return result
+
+    wrapped_stt = LoggingStep(stt, "STT")
+    wrapped_user_agg = LoggingStep(user_aggregator, "UserAggregator")
+    wrapped_llm = LoggingStep(llm, "LLM")
+    wrapped_tts = LoggingStep(tts, "TTS")
+    wrapped_assistant_agg = LoggingStep(assistant_aggregator, "AssistantAggregator")
+
+    pipeline = Pipeline([
+        stt,
+        user_aggregator,
+        llm,
+        tts,
+        assistant_aggregator,
+    ])
+
     task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True, check_dangling_tasks=True))
     runner = PipelineRunner()
 
-    # Handle the initial greeting if needed
     if entry_message:
-        logger.info("Bot will speak first with an introduction")
-        # Prepare a greeting message
-        initial_message = {
-            "role": "user",
-            "content": entry_message,
-        }
-
-        # Queue the initial message to be processed once the pipeline starts
+        log_and_flush(logging.INFO, "[BOT] Bot will speak first with an introduction")
+        initial_message = {"role": "user", "content": entry_message}
         async def queue_initial_message():
-            await asyncio.sleep(2)  # Small delay to ensure transport is ready
+            await asyncio.sleep(2)
             await task.queue_frames([LLMMessagesFrame([initial_message])])
-            logger.info("Initial greeting message queued")
-
-        # Create a task to queue the initial message
+            log_and_flush(logging.INFO, "[BOT] Initial greeting message queued")
         asyncio.create_task(queue_initial_message())
 
-    # Run the pipeline
-    await runner.run(task)
+    # After creating your task:
+    debug_observer = DebugLogObserver()
+    await task.add_observer(debug_observer)
+
+    try:
+        log_and_flush(logging.INFO, "[RUN] Starting pipeline runner...")
+        await runner.run(task)
+    except Exception as e:
+        log_and_flush(logging.ERROR, f"[ERROR] Exception in pipeline: {e}")
+        raise
 
 
 if __name__ == "__main__":
@@ -361,6 +373,10 @@ if __name__ == "__main__":
         action="store_true",
         help="Enable function tools like weather and time",
     )
+    parser.add_argument("--client-id", help="Internal client ID for the bot")
+    parser.add_argument("--persona-data-json", help="Persona data as JSON string")
+    parser.add_argument("--api-key", help="API key for authentication")
+    parser.add_argument("--meetingbaas-bot-id", help="MeetingBaas bot ID")
 
     args = parser.parse_args()
 

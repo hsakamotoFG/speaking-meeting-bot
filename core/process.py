@@ -6,11 +6,16 @@ import sys
 import time
 from typing import Any, Dict
 import json
+import threading
 
 from config.persona_utils import persona_manager
 from meetingbaas_pipecat.utils.logger import logger
 
 PIPECAT_PROCESSES: Dict[str, subprocess.Popen] = {}
+
+def stream_output(pipe, prefix):
+    for line in iter(pipe.readline, ''):
+        print(f"{prefix} {line.strip()}")
 
 def start_pipecat_process(
     client_id: str,
@@ -86,14 +91,9 @@ def start_pipecat_process(
         text=True,  # Capture output as text
     )
 
-    # Log stdout and stderr asynchronously
-    async def log_output():
-        async for line in process.stdout:
-            logger.info(f"[Pipecat Bot - {client_id}]: {line.strip()}")
-        async for line in process.stderr:
-            logger.error(f"[Pipecat Bot - {client_id} ERR]: {line.strip()}")
-
-    # asyncio.create_task(log_output())
+    # Start threads to print output
+    threading.Thread(target=stream_output, args=(process.stdout, "[Pipecat STDOUT]"), daemon=True).start()
+    threading.Thread(target=stream_output, args=(process.stderr, "[Pipecat STDERR]"), daemon=True).start()
 
     logger.info(f"Started Pipecat process with PID {process.pid}")
     return process
