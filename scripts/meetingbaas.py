@@ -321,29 +321,16 @@ async def main(
     def log_pipeline_step(step_name, data):
         log_and_flush(logging.INFO, f"[PIPELINE] Step: {step_name}, Type: {type(data)}, Data: {str(data)[:120]}")
 
-    # Wrap pipeline steps for logging
-    class LoggingStep:
-        def __init__(self, step, name):
-            self.step = step
-            self.name = name
-        async def __call__(self, *args, **kwargs):
-            result = await self.step(*args, **kwargs)
-            log_pipeline_step(self.name, result)
-            return result
-
-    wrapped_stt = LoggingStep(stt, "STT")
-    wrapped_user_agg = LoggingStep(user_aggregator, "UserAggregator")
-    wrapped_llm = LoggingStep(llm, "LLM")
-    wrapped_tts = LoggingStep(tts, "TTS")
-    wrapped_assistant_agg = LoggingStep(assistant_aggregator, "AssistantAggregator")
-
+    # Remove the LoggingStep wrapper - it doesn't properly proxy all methods
+    # Instead, we'll log in the pipeline components themselves if needed
+    
     pipeline = Pipeline([
         transport.input(),   # Add transport input to receive audio/data
-        wrapped_stt,
-        wrapped_user_agg,
-        wrapped_llm,
-        wrapped_tts,
-        wrapped_assistant_agg,
+        stt,
+        user_aggregator,
+        llm,
+        tts,
+        assistant_aggregator,
         transport.output(),  # Add transport output to send audio/data
     ])
 
