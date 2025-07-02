@@ -35,6 +35,17 @@ import logging
 
 from pipecat.services.llm_service import FunctionCallParams
 
+from pipecat.pipeline.runner import PipelineRunner as OriginalPipelineRunner
+import signal
+import platform
+
+class WindowsSafePipelineRunner(OriginalPipelineRunner):
+    def _setup_sigint(self):
+        # Only set up signal handling on non-Windows
+        if platform.system() != "Windows":
+            super()._setup_sigint()
+
+
 load_dotenv(override=True)
 
 logger = configure_logger()
@@ -335,7 +346,7 @@ async def main(
     ])
 
     task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True, check_dangling_tasks=True))
-    runner = PipelineRunner()
+    runner = WindowsSafePipelineRunner()
 
     # Add a simple test to verify TTS is working
     async def test_tts_output():
@@ -384,7 +395,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a MeetingBaas bot")
     parser.add_argument("--meeting-url", help="URL of the meeting to join")
     parser.add_argument(
-        "--persona-name", default="Meeting Bot", help="Name to display for the bot"
+        "--persona-name", default="interviewer", help="Name to display for the bot"
     )
     parser.add_argument(
         "--entry-message",
